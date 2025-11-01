@@ -22,7 +22,7 @@ sys.path.insert(0, str(src_path))
 try:
     from src.utils.logger import setup_logging
     from src.database.database_manager import DatabaseManager
-    from src.gui.main_window import MainWindow
+    from src.gui.enhanced_main_window import EnhancedMainWindow
 except ImportError as e:
     print(f"Error importing modules: {e}")
     sys.exit(1)
@@ -50,8 +50,9 @@ class NextAstroTargetApp:
             
             # Initialize GUI
             self.root = tk.Tk()
-            self.root.title("NextAstroTarget - Astrophotography Target Selector")
-            self.root.geometry("1024x768")
+            self.root.title("NextAstroTarget - Enhanced Astrophotography Target Selector")
+            self.root.geometry("1400x900")
+            self.root.minsize(1000, 700)
             
             # Set window icon if available
             icon_path = "assets/icon.ico"
@@ -64,8 +65,8 @@ class NextAstroTargetApp:
             # Center window on screen
             self._center_window()
             
-            # Create main window
-            self.main_window = MainWindow(self.root, self.db_manager)
+            # Create enhanced main window
+            self.main_window = EnhancedMainWindow(self.root, self.db_manager)
             
             self.logger.info("Application initialized successfully")
             return True
@@ -90,8 +91,8 @@ class NextAstroTargetApp:
         self.root.update_idletasks()
         
         # Get window dimensions
-        window_width = 1024
-        window_height = 768
+        window_width = 1400
+        window_height = 900
         
         # Get screen dimensions
         screen_width = self.root.winfo_screenwidth()
