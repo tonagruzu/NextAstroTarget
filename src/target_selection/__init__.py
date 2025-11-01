@@ -1,0 +1,1 @@
+"""Target selection package for NextAstroTarget application."""
