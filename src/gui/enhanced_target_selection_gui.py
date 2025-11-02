@@ -23,74 +23,96 @@ from src.database.database_manager import DatabaseManager
 from src.utils.astronomical_calculations import AstronomicalCalculator
 
 
-class AstrobinTooltip:
-    """Tooltip that displays Astrobin images when hovering over object names."""
+class ObjectTooltip:
+    """Tooltip that displays object information when hovering over object names."""
     
     def __init__(self, widget):
         self.widget = widget
         self.tooltip_window = None
-        self.image_cache = {}  # Cache loaded images
-        self.load_timeout = 3  # seconds
-        self.current_astrobin_id = None  # Track current hover target
+        self.current_object = None  # Track current hover target
         
-    def show_tooltip(self, event, astrobin_id, object_name):
-        """Show tooltip with Astrobin image."""
-        # Clean astrobin ID for comparison
-        try:
-            clean_id = str(int(float(astrobin_id)))
-        except (ValueError, TypeError):
-            return  # Invalid ID
-            
-        if not astrobin_id or pd.isna(astrobin_id):
-            return  # No Astrobin ID available
-            
+    def show_tooltip(self, event, object_data, object_name):
+        """Show tooltip with object information."""
         # Avoid showing tooltip for the same object repeatedly
-        if self.tooltip_window and self.current_astrobin_id == clean_id:
+        if self.tooltip_window and self.current_object == object_name:
             return
             
         # Hide existing tooltip
         self.hide_tooltip()
         
         try:
-            self.current_astrobin_id = clean_id
+            self.current_object = object_name
             
             # Create tooltip window
             self.tooltip_window = tk.Toplevel(self.widget)
             self.tooltip_window.wm_overrideredirect(True)
-            self.tooltip_window.configure(bg='lightyellow')
+            self.tooltip_window.configure(bg='lightblue')
             
             # Position near cursor, but ensure it stays on screen
             x = event.x_root + 15
-            y = event.y_root - 50  # Above cursor to avoid blocking view
+            y = event.y_root - 20
             
             # Get screen dimensions
             screen_width = self.tooltip_window.winfo_screenwidth()
             screen_height = self.tooltip_window.winfo_screenheight()
             
             # Adjust position if needed
-            if x + 420 > screen_width:  # 420 = max tooltip width + padding
-                x = event.x_root - 420
-            if y - 350 < 0:  # 350 = max tooltip height + padding
-                y = event.y_root + 20
+            if x + 300 > screen_width:
+                x = event.x_root - 300
+            if y + 150 > screen_height:
+                y = event.y_root - 150
                 
             self.tooltip_window.geometry(f"+{x}+{y}")
             
-            # Create loading label
-            loading_label = ttk.Label(
-                self.tooltip_window, 
-                text=f"🖼️ Loading {object_name} image...",
-                background="lightyellow",
-                padding=10,
-                font=("Arial", 9)
-            )
-            loading_label.pack()
+            # Create info frame
+            info_frame = tk.Frame(self.tooltip_window, bg='lightblue', padx=10, pady=8)
+            info_frame.pack()
             
-            # Load image in background thread
-            threading.Thread(
-                target=self._load_astrobin_image,
-                args=(astrobin_id, object_name),
-                daemon=True
-            ).start()
+            # Object name (header)
+            name_label = tk.Label(
+                info_frame,
+                text=f"🌌 {object_name}",
+                font=("Arial", 11, "bold"),
+                bg="lightblue",
+                fg="darkblue"
+            )
+            name_label.pack(anchor='w')
+            
+            # Object details
+            details = []
+            if object_data.get('object_type'):
+                details.append(f"Type: {object_data['object_type']}")
+            if object_data.get('constellation'):
+                details.append(f"Constellation: {object_data['constellation']}")
+            if object_data.get('magnitude'):
+                details.append(f"Magnitude: {object_data['magnitude']}")
+            if object_data.get('size_arcmin'):
+                details.append(f"Size: {object_data['size_arcmin']}'")
+            if object_data.get('rating'):
+                stars = "⭐" * min(int(float(object_data['rating'])), 5)
+                details.append(f"Rating: {stars}")
+            
+            # Display details
+            for detail in details[:5]:  # Limit to 5 lines
+                detail_label = tk.Label(
+                    info_frame,
+                    text=detail,
+                    font=("Arial", 9),
+                    bg="lightblue",
+                    fg="black"
+                )
+                detail_label.pack(anchor='w')
+            
+            # Nick/Nickname if available
+            if object_data.get('nick') and pd.notna(object_data['nick']):
+                nick_label = tk.Label(
+                    info_frame,
+                    text=f"💫 \"{object_data['nick']}\"",
+                    font=("Arial", 9, "italic"),
+                    bg="lightblue",
+                    fg="purple"
+                )
+                nick_label.pack(anchor='w', pady=(3, 0))
             
         except Exception as e:
             logging.getLogger(__name__).warning(f"Error showing tooltip: {e}")
@@ -100,116 +122,9 @@ class AstrobinTooltip:
         if self.tooltip_window:
             self.tooltip_window.destroy()
             self.tooltip_window = None
-            self.current_astrobin_id = None
+            self.current_object = None
             
-    def _load_astrobin_image(self, astrobin_id, object_name):
-        """Load Astrobin image in background thread."""
-        try:
-            # Clean astrobin ID
-            astrobin_id_clean = str(int(float(astrobin_id)))
-            
-            # Check cache first
-            cache_key = astrobin_id_clean
-            if cache_key in self.image_cache:
-                self._display_image(self.image_cache[cache_key], object_name)
-                return
-                
-            # Construct Astrobin thumbnail URL
-            thumb_url = f"https://cdn.astrobin.com/thumbs/{astrobin_id_clean}_1824x0_q100_watermark.jpg"
-            
-            # Try to load image
-            response = requests.get(thumb_url, timeout=self.load_timeout)
-            
-            if response.status_code == 200:
-                # Load image with PIL
-                image = Image.open(BytesIO(response.content))
-                
-                # Resize for tooltip (max 400x300)
-                image.thumbnail((400, 300), Image.Resampling.LANCZOS)
-                
-                # Convert to PhotoImage
-                photo = ImageTk.PhotoImage(image)
-                
-                # Cache the image
-                self.image_cache[cache_key] = photo
-                
-                # Display image
-                self._display_image(photo, object_name)
-                
-            else:
-                self._show_error(f"Image not available for {object_name}")
-                
-        except Exception as e:
-            self._show_error(f"Failed to load image: {str(e)}")
-            
-    def _display_image(self, photo, object_name):
-        """Display the loaded image in tooltip."""
-        if not self.tooltip_window:
-            return
-            
-        try:
-            # Clear loading text and show image
-            for widget in self.tooltip_window.winfo_children():
-                widget.destroy()
-                
-            # Create frame for image and label
-            frame = tk.Frame(self.tooltip_window, bg='lightyellow')
-            frame.pack(padx=3, pady=3)
-            
-            # Object name label
-            name_label = tk.Label(
-                frame,
-                text=f"📸 {object_name}",
-                font=("Arial", 10, "bold"),
-                bg="lightyellow",
-                fg="darkblue"
-            )
-            name_label.pack(pady=(0, 3))
-            
-            # Image label with border
-            image_frame = tk.Frame(frame, bg='darkgray', bd=1)
-            image_frame.pack()
-            
-            image_label = tk.Label(image_frame, image=photo, bg='white')
-            image_label.pack(padx=1, pady=1)
-            
-            # Credit label
-            credit_label = tk.Label(
-                frame,
-                text="Source: AstroBin.com",
-                font=("Arial", 8),
-                bg="lightyellow",
-                fg="gray"
-            )
-            credit_label.pack(pady=(3, 0))
-            
-            # Keep reference to prevent garbage collection
-            image_label.image = photo
-            
-        except Exception as e:
-            logging.getLogger(__name__).warning(f"Error displaying image: {e}")
-            
-    def _show_error(self, message):
-        """Show error message in tooltip."""
-        if not self.tooltip_window:
-            return
-            
-        try:
-            # Clear loading text and show error
-            for widget in self.tooltip_window.winfo_children():
-                widget.destroy()
-                
-            error_label = ttk.Label(
-                self.tooltip_window,
-                text=message,
-                background="lightyellow",
-                foreground="red",
-                padding=5
-            )
-            error_label.pack()
-            
-        except Exception as e:
-            logging.getLogger(__name__).warning(f"Error showing error message: {e}")
+
 
 
 class EnhancedTargetSelectionGUI:
@@ -336,8 +251,8 @@ class EnhancedTargetSelectionGUI:
         self.tree.bind('<Double-1>', self.on_object_double_click)
         self.tree.bind('<Button-3>', self.show_context_menu)
         
-        # Create tooltip for Astrobin images
-        self.tooltip = AstrobinTooltip(self.tree)
+        # Create tooltip for object information
+        self.tooltip = ObjectTooltip(self.tree)
         self.tree.bind('<Motion>', self.on_tree_motion)
         self.tree.bind('<Leave>', self.on_tree_leave)
         
@@ -890,16 +805,14 @@ class EnhancedTargetSelectionGUI:
                     ]
                     
                     if not obj_match.empty:
-                        astrobin_id = obj_match.iloc[0].get('astrobin_id')
-                        if pd.notna(astrobin_id) and str(astrobin_id).strip():
-                            # Schedule tooltip with delay to prevent flickering
-                            self.tooltip_delay_timer = self.main_frame.after(
-                                500,  # 500ms delay
-                                lambda: self.tooltip.show_tooltip(event, astrobin_id, object_name)
-                            )
-                        else:
-                            # No Astrobin ID, hide tooltip immediately
-                            self.tooltip.hide_tooltip()
+                        # Get object data for tooltip
+                        object_data = obj_match.iloc[0].to_dict()
+                        
+                        # Schedule tooltip with delay to prevent flickering
+                        self.tooltip_delay_timer = self.main_frame.after(
+                            300,  # 300ms delay (reduced for better responsiveness)
+                            lambda odata=object_data, oname=object_name, ev=event: self.tooltip.show_tooltip(ev, odata, oname)
+                        )
                     else:
                         # Object not found, hide tooltip
                         self.tooltip.hide_tooltip()
