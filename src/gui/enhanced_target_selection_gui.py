@@ -464,11 +464,11 @@ class EnhancedTargetSelectionGUI:
             height=20
         )
         
-        # Configure columns
+        # Configure columns with centered text alignment
         for i, (col_id, col_name, width) in enumerate(self.all_columns):
             self.tree.heading(col_id, text=col_name, 
                             command=lambda c=col_name: self.sort_by_column(c))
-            self.tree.column(col_id, width=width, minwidth=50)
+            self.tree.column(col_id, width=width, minwidth=50, anchor='center')
         
         # Create scrollbars
         self.scrollbar_v = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)

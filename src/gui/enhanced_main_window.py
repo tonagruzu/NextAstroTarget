@@ -485,10 +485,17 @@ class EnhancedMainWindow:
         
         ttk.Label(dec_frame, text="Declination Limits:").pack(side=tk.LEFT)
         
-        self.min_dec_var = tk.StringVar(value="-30")
+        # Use saved values if available, otherwise use defaults
+        min_dec_default = "-30"
+        max_dec_default = "+90"
+        if hasattr(self, 'saved_filter_values') and self.saved_filter_values:
+            min_dec_default = self.saved_filter_values['min_dec']
+            max_dec_default = self.saved_filter_values['max_dec']
+            
+        self.min_dec_var = tk.StringVar(value=min_dec_default)
         ttk.Entry(dec_frame, textvariable=self.min_dec_var, width=8).pack(side=tk.LEFT, padx=2)
         ttk.Label(dec_frame, text="to").pack(side=tk.LEFT, padx=2)
-        self.max_dec_var = tk.StringVar(value="+90")
+        self.max_dec_var = tk.StringVar(value=max_dec_default)
         ttk.Entry(dec_frame, textvariable=self.max_dec_var, width=8).pack(side=tk.LEFT, padx=2)
         
         self.filter_buttons['declination'] = tk.Button(
@@ -505,10 +512,17 @@ class EnhancedMainWindow:
         
         ttk.Label(size_frame, text="Size Limits (arcmin):").pack(side=tk.LEFT)
         
-        self.min_size_var = tk.StringVar(value="0")
+        # Use saved values if available, otherwise use defaults
+        min_size_default = "0"
+        max_size_default = "999"
+        if hasattr(self, 'saved_filter_values') and self.saved_filter_values:
+            min_size_default = self.saved_filter_values['min_size']
+            max_size_default = self.saved_filter_values['max_size']
+            
+        self.min_size_var = tk.StringVar(value=min_size_default)
         ttk.Entry(size_frame, textvariable=self.min_size_var, width=8).pack(side=tk.LEFT, padx=2)
         ttk.Label(size_frame, text="to").pack(side=tk.LEFT, padx=2)
-        self.max_size_var = tk.StringVar(value="999")
+        self.max_size_var = tk.StringVar(value=max_size_default)
         ttk.Entry(size_frame, textvariable=self.max_size_var, width=8).pack(side=tk.LEFT, padx=2)
         
         self.filter_buttons['size'] = tk.Button(
@@ -590,18 +604,17 @@ class EnhancedMainWindow:
             style="Sort.TButton"
         ).pack(side=tk.LEFT, padx=2)
         
-        # Clear filters (black)
-        clear_frame = ttk.Frame(parent)
-        clear_frame.grid(row=7, column=0, sticky=(tk.W, tk.E), padx=5, pady=5)
+        # Add separator and clear buttons to same row for better grouping
+        ttk.Separator(sort_frame, orient='vertical').pack(side=tk.LEFT, padx=10, fill='y')
         
         ttk.Button(
-            clear_frame, text="Clear Filters (Keep Values)",
+            sort_frame, text="Clear Filters (Keep Values)",
             command=self.clear_filters,
             style="Filter.Clear.TButton"
         ).pack(side=tk.LEFT, padx=5)
         
         ttk.Button(
-            clear_frame, text="Reset Values & Filters",
+            sort_frame, text="Reset Values & Filters",
             command=self.reset_filters,
             style="Filter.Clear.TButton"
         ).pack(side=tk.LEFT, padx=5)
@@ -1094,44 +1107,52 @@ class EnhancedMainWindow:
             # Partial phases - create accurate shadow
             # Calculate the position of the terminator (day/night boundary)
             
-            if is_waxing:
-                # Waxing phases: shadow on the left, light on the right
-                if illumination <= 50:  # New to First Quarter
-                    # Create a shadow that gradually reveals the right side
-                    shadow_width = size * (1 - illumination / 50)
-                    self.moon_canvas.create_oval(
-                        margin, margin, 
-                        margin + shadow_width, margin + size, 
-                        fill="#2F2F2F", outline=""
-                    )
-                else:  # First Quarter to Full
-                    # Create an elliptical shadow on the left
-                    shadow_offset = (size / 2) * (2 - illumination / 50)
-                    if shadow_offset > 0:
+            # Use cycle position for accurate shadow placement
+            # cycle_position: 0.0=New, 0.25=First Quarter, 0.5=Full, 0.75=Last Quarter
+            
+            if cycle_position <= 0.5:
+                # Waxing phases (0.0 to 0.5): Shadow starts covering entire moon, gradually reveals from right
+                if cycle_position <= 0.25:  # New to First Quarter
+                    # Shadow covers left portion, gradually shrinking to reveal right side
+                    shadow_coverage = 1.0 - (cycle_position / 0.25)  # 1.0 to 0.0
+                    shadow_width = size * shadow_coverage
+                    if shadow_width > 0:
+                        self.moon_canvas.create_oval(
+                            margin, margin,
+                            margin + shadow_width, margin + size,
+                            fill="#2F2F2F", outline=""
+                        )
+                else:  # First Quarter to Full (0.25 to 0.5)
+                    # Use elliptical shadow that shrinks from left
+                    progress = (cycle_position - 0.25) / 0.25  # 0.0 to 1.0
+                    shadow_offset = (size / 2) * (1.0 - progress)
+                    if shadow_offset > 2:
                         self.moon_canvas.create_oval(
                             margin - shadow_offset, margin,
-                            margin + size - shadow_offset, margin + size,
+                            margin + shadow_offset, margin + size,
                             fill="#2F2F2F", outline=""
                         )
             else:
-                # Waning phases: shadow on the right, light on the left
-                if illumination <= 50:  # Last Quarter to New
-                    # Create a shadow that gradually covers the left side
-                    shadow_start = size * (illumination / 50)
+                # Waning phases (0.5 to 1.0): Shadow gradually covers from right
+                if cycle_position <= 0.75:  # Full to Last Quarter (0.5 to 0.75)
+                    # Use elliptical shadow that grows from right
+                    progress = (cycle_position - 0.5) / 0.25  # 0.0 to 1.0
+                    shadow_offset = (size / 2) * progress
+                    if shadow_offset > 2:
+                        self.moon_canvas.create_oval(
+                            margin + size - shadow_offset, margin,
+                            margin + size + shadow_offset, margin + size,
+                            fill="#2F2F2F", outline=""
+                        )
+                else:  # Last Quarter to New (0.75 to 1.0)
+                    # Shadow grows from right, gradually covering left portion
+                    progress = (cycle_position - 0.75) / 0.25  # 0.0 to 1.0
+                    shadow_start = size * (1.0 - progress)  # size to 0
                     self.moon_canvas.create_oval(
                         margin + shadow_start, margin,
                         margin + size, margin + size,
                         fill="#2F2F2F", outline=""
                     )
-                else:  # Full to Last Quarter
-                    # Create an elliptical shadow on the right
-                    shadow_offset = (size / 2) * (2 - illumination / 50)
-                    if shadow_offset > 0:
-                        self.moon_canvas.create_oval(
-                            margin + shadow_offset, margin,
-                            margin + size + shadow_offset, margin + size,
-                            fill="#2F2F2F", outline=""
-                        )
         
         # Add outer circle for definition
         self.moon_canvas.create_oval(margin, margin, margin + size, margin + size, 
@@ -1294,6 +1315,9 @@ class EnhancedMainWindow:
     # Navigation methods (adapted from original)
     def check_database_and_navigate(self):
         """Check if database exists and navigate to appropriate screen."""
+        # Auto-activate "Now" button to set current time on startup
+        self.set_time_now()
+        
         if self.db_manager.database_exists():
             self.logger.info("Database exists, navigating to enhanced target selection")
             self.update_status("Database ready - Use controls above to filter and select targets")
@@ -1408,6 +1432,20 @@ class EnhancedMainWindow:
                 self.logger.info(f"Loaded observatory config: {self.observatory['latitude']:.4f}, {self.observatory['longitude']:.4f}")
             else:
                 self.logger.info("No Observatory section in config, using defaults")
+            
+            # Load filter settings
+            if 'Filters' in config:
+                filter_config = config['Filters']
+                # Store values to apply after GUI is created
+                self.saved_filter_values = {
+                    'min_dec': filter_config.get('min_declination', '-30'),
+                    'max_dec': filter_config.get('max_declination', '+90'),
+                    'min_size': filter_config.get('min_size', '0'),
+                    'max_size': filter_config.get('max_size', '999')
+                }
+                self.logger.info("Loaded saved filter values")
+            else:
+                self.saved_filter_values = None
                 
         except Exception as e:
             self.logger.error(f"Error loading observatory config: {e}")
@@ -1439,11 +1477,25 @@ class EnhancedMainWindow:
             if hasattr(self, 'address_var'):
                 obs_config['last_address'] = self.address_var.get()
             
+            # Save filter settings
+            if 'Filters' not in config:
+                config.add_section('Filters')
+            
+            filter_config = config['Filters']
+            if hasattr(self, 'min_dec_var'):
+                filter_config['min_declination'] = self.min_dec_var.get()
+            if hasattr(self, 'max_dec_var'):
+                filter_config['max_declination'] = self.max_dec_var.get()
+            if hasattr(self, 'min_size_var'):
+                filter_config['min_size'] = self.min_size_var.get()
+            if hasattr(self, 'max_size_var'):
+                filter_config['max_size'] = self.max_size_var.get()
+            
             # Write config file
             with open(config_path, 'w') as configfile:
                 config.write(configfile)
                 
-            self.logger.info(f"Saved observatory config: {self.observatory['latitude']:.4f}, {self.observatory['longitude']:.4f}")
+            self.logger.info(f"Saved observatory config and filter values: {self.observatory['latitude']:.4f}, {self.observatory['longitude']:.4f}")
             
         except Exception as e:
             self.logger.error(f"Error saving observatory config: {e}")
@@ -1458,5 +1510,7 @@ class EnhancedMainWindow:
         )
         
         if result:
+            # Save configuration before closing
+            self.save_observatory_config()
             self.logger.info("Enhanced application closing confirmed")
             self.root.quit()
