@@ -51,8 +51,14 @@ class NextAstroTargetApp:
             # Initialize GUI
             self.root = tk.Tk()
             self.root.title("NextAstroTarget - Enhanced Astrophotography Target Selector")
-            self.root.geometry("1400x900")
-            self.root.minsize(1000, 700)
+            self.root.geometry("1800x1200")
+            self.root.minsize(1400, 900)
+            
+            # Set window state to ensure proper visibility
+            self.root.state('normal')  # Ensure window is not minimized
+            
+            # Option to start maximized for better visibility (uncomment next line if desired)
+            # self.root.state('zoomed')  # Start maximized on Windows
             
             # Set window icon if available
             icon_path = "assets/icon.ico"
@@ -64,6 +70,10 @@ class NextAstroTargetApp:
             
             # Center window on screen
             self._center_window()
+            
+            # Ensure window is brought to front
+            self.root.lift()
+            self.root.focus_force()
             
             # Create enhanced main window
             self.main_window = EnhancedMainWindow(self.root, self.db_manager)
@@ -87,23 +97,32 @@ class NextAstroTargetApp:
             return False
     
     def _center_window(self):
-        """Center the main window on the screen."""
+        """Center the main window on the screen with responsive sizing."""
         self.root.update_idletasks()
-        
-        # Get window dimensions
-        window_width = 1400
-        window_height = 900
         
         # Get screen dimensions
         screen_width = self.root.winfo_screenwidth()
         screen_height = self.root.winfo_screenheight()
         
-        # Calculate position
-        x = (screen_width - window_width) // 2
-        y = (screen_height - window_height) // 2
+        # Calculate optimal window dimensions based on screen size
+        # Use 85% of screen width and 90% of screen height, but with reasonable limits
+        optimal_width = min(max(int(screen_width * 0.85), 1400), 2000)
+        optimal_height = min(max(int(screen_height * 0.90), 900), 1400)
+        
+        # Override with fixed size if we set it specifically for larger screens
+        window_width = 1800 if screen_width >= 1800 else optimal_width
+        window_height = 1200 if screen_height >= 1200 else optimal_height
+        
+        # Calculate position to center the window
+        x = max(0, (screen_width - window_width) // 2)
+        y = max(0, (screen_height - window_height) // 2)
         
         # Set window position and size
         self.root.geometry(f"{window_width}x{window_height}+{x}+{y}")
+        
+        if self.logger:
+            self.logger.info(f"Window sized for screen {screen_width}x{screen_height}: "
+                            f"Window {window_width}x{window_height} at ({x}, {y})")
     
     def run(self):
         """Run the application main loop."""

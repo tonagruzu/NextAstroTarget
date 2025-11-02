@@ -73,9 +73,19 @@ class EnhancedMainWindow:
     
     def setup_main_container(self):
         """Create main container structure."""
+        # Configure root window grid
+        self.root.grid_rowconfigure(0, weight=1)
+        self.root.grid_columnconfigure(0, weight=1)
+        
+        # Main container frame
+        main_container = ttk.Frame(self.root)
+        main_container.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
+        main_container.grid_rowconfigure(0, weight=1)
+        main_container.grid_columnconfigure(0, weight=1)
+        
         # Main scrollable frame
-        self.main_canvas = tk.Canvas(self.root, bg='#f0f0f0')
-        self.scrollbar = ttk.Scrollbar(self.root, orient="vertical", command=self.main_canvas.yview)
+        self.main_canvas = tk.Canvas(main_container, bg='#f0f0f0')
+        self.scrollbar = ttk.Scrollbar(main_container, orient="vertical", command=self.main_canvas.yview)
         self.scrollable_frame = ttk.Frame(self.main_canvas)
         
         self.scrollable_frame.bind(
@@ -86,12 +96,21 @@ class EnhancedMainWindow:
         self.main_canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
         self.main_canvas.configure(yscrollcommand=self.scrollbar.set)
         
-        # Pack main components
-        self.main_canvas.pack(side="left", fill="both", expand=True)
-        self.scrollbar.pack(side="right", fill="y")
+        # Pack main components with proper grid layout
+        self.main_canvas.grid(row=0, column=0, sticky="nsew")
+        self.scrollbar.grid(row=0, column=1, sticky="ns")
         
         # Configure grid weights
         self.scrollable_frame.columnconfigure(0, weight=1)
+        # Give most weight to the object data section (row 4)
+        self.scrollable_frame.rowconfigure(4, weight=1)
+        
+        # Add mouse wheel scrolling
+        self.main_canvas.bind("<MouseWheel>", self._on_mousewheel)
+        
+    def _on_mousewheel(self, event):
+        """Handle mouse wheel scrolling."""
+        self.main_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
     
     def setup_header_section(self):
         """Setup application header with navigation."""
@@ -181,12 +200,6 @@ class EnhancedMainWindow:
         location_frame.grid(row=1, column=0, columnspan=3, sticky=(tk.W, tk.E), padx=5, pady=5)
         
         self.setup_location_controls(location_frame)
-        
-        # Sorting controls
-        sort_frame = ttk.Frame(timing_frame)
-        sort_frame.grid(row=2, column=0, columnspan=3, sticky=(tk.W, tk.E), padx=5, pady=5)
-        
-        self.setup_sorting_controls(sort_frame)
     
     def setup_datetime_spinboxes(self, parent):
         """Setup date/time spinboxes for detailed time control."""
@@ -292,25 +305,7 @@ class EnhancedMainWindow:
         parent.grid_columnconfigure(1, weight=1)
         parent.grid_columnconfigure(4, weight=1)
     
-    def setup_sorting_controls(self, parent):
-        """Setup sorting control buttons."""
-        ttk.Button(
-            parent, text="Alphabetical Sort",
-            command=self.sort_alphabetical,
-            style="Sort.TButton"
-        ).pack(side=tk.LEFT, padx=5)
-        
-        ttk.Button(
-            parent, text="Transit Sort",
-            command=self.sort_transit,
-            style="Sort.TButton"
-        ).pack(side=tk.LEFT, padx=5)
-        
-        ttk.Button(
-            parent, text="Top",
-            command=self.scroll_to_top,
-            style="Sort.TButton"
-        ).pack(side=tk.LEFT, padx=5)
+
     
     def setup_sun_moon_section(self):
         """Setup Sun and Moon data display."""
@@ -531,9 +526,33 @@ class EnhancedMainWindow:
                 style="Filter.Type.TButton"
             ).pack(side=tk.LEFT, padx=2)
         
+        # Sorting controls (gray)
+        sort_frame = ttk.Frame(parent)
+        sort_frame.grid(row=5, column=0, sticky=(tk.W, tk.E), padx=5, pady=2)
+        
+        ttk.Label(sort_frame, text="Sorting:").pack(side=tk.LEFT)
+        
+        ttk.Button(
+            sort_frame, text="Alphabetical Sort",
+            command=self.sort_alphabetical,
+            style="Sort.TButton"
+        ).pack(side=tk.LEFT, padx=2)
+        
+        ttk.Button(
+            sort_frame, text="Transit Sort",
+            command=self.sort_transit,
+            style="Sort.TButton"
+        ).pack(side=tk.LEFT, padx=2)
+        
+        ttk.Button(
+            sort_frame, text="Top",
+            command=self.scroll_to_top,
+            style="Sort.TButton"
+        ).pack(side=tk.LEFT, padx=2)
+        
         # Clear filters (black)
         clear_frame = ttk.Frame(parent)
-        clear_frame.grid(row=5, column=0, sticky=(tk.W, tk.E), padx=5, pady=5)
+        clear_frame.grid(row=6, column=0, sticky=(tk.W, tk.E), padx=5, pady=5)
         
         ttk.Button(
             clear_frame, text="Clear All Filters",
