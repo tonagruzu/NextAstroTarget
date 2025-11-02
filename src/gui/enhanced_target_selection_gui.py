@@ -12,12 +12,204 @@ import logging
 from typing import List, Dict, Any, Optional, Tuple
 import threading
 import warnings
+import requests
+from PIL import Image, ImageTk
+from io import BytesIO
 
 # Suppress pandas FutureWarnings for cleaner user experience
 warnings.filterwarnings('ignore', category=FutureWarning, module='pandas')
 
 from src.database.database_manager import DatabaseManager
 from src.utils.astronomical_calculations import AstronomicalCalculator
+
+
+class AstrobinTooltip:
+    """Tooltip that displays Astrobin images when hovering over object names."""
+    
+    def __init__(self, widget):
+        self.widget = widget
+        self.tooltip_window = None
+        self.image_cache = {}  # Cache loaded images
+        self.load_timeout = 3  # seconds
+        self.current_astrobin_id = None  # Track current hover target
+        
+    def show_tooltip(self, event, astrobin_id, object_name):
+        """Show tooltip with Astrobin image."""
+        # Clean astrobin ID for comparison
+        try:
+            clean_id = str(int(float(astrobin_id)))
+        except (ValueError, TypeError):
+            return  # Invalid ID
+            
+        if not astrobin_id or pd.isna(astrobin_id):
+            return  # No Astrobin ID available
+            
+        # Avoid showing tooltip for the same object repeatedly
+        if self.tooltip_window and self.current_astrobin_id == clean_id:
+            return
+            
+        # Hide existing tooltip
+        self.hide_tooltip()
+        
+        try:
+            self.current_astrobin_id = clean_id
+            
+            # Create tooltip window
+            self.tooltip_window = tk.Toplevel(self.widget)
+            self.tooltip_window.wm_overrideredirect(True)
+            self.tooltip_window.configure(bg='lightyellow')
+            
+            # Position near cursor, but ensure it stays on screen
+            x = event.x_root + 15
+            y = event.y_root - 50  # Above cursor to avoid blocking view
+            
+            # Get screen dimensions
+            screen_width = self.tooltip_window.winfo_screenwidth()
+            screen_height = self.tooltip_window.winfo_screenheight()
+            
+            # Adjust position if needed
+            if x + 420 > screen_width:  # 420 = max tooltip width + padding
+                x = event.x_root - 420
+            if y - 350 < 0:  # 350 = max tooltip height + padding
+                y = event.y_root + 20
+                
+            self.tooltip_window.geometry(f"+{x}+{y}")
+            
+            # Create loading label
+            loading_label = ttk.Label(
+                self.tooltip_window, 
+                text=f"🖼️ Loading {object_name} image...",
+                background="lightyellow",
+                padding=10,
+                font=("Arial", 9)
+            )
+            loading_label.pack()
+            
+            # Load image in background thread
+            threading.Thread(
+                target=self._load_astrobin_image,
+                args=(astrobin_id, object_name),
+                daemon=True
+            ).start()
+            
+        except Exception as e:
+            logging.getLogger(__name__).warning(f"Error showing tooltip: {e}")
+            
+    def hide_tooltip(self, event=None):
+        """Hide the tooltip."""
+        if self.tooltip_window:
+            self.tooltip_window.destroy()
+            self.tooltip_window = None
+            self.current_astrobin_id = None
+            
+    def _load_astrobin_image(self, astrobin_id, object_name):
+        """Load Astrobin image in background thread."""
+        try:
+            # Clean astrobin ID
+            astrobin_id_clean = str(int(float(astrobin_id)))
+            
+            # Check cache first
+            cache_key = astrobin_id_clean
+            if cache_key in self.image_cache:
+                self._display_image(self.image_cache[cache_key], object_name)
+                return
+                
+            # Construct Astrobin thumbnail URL
+            thumb_url = f"https://cdn.astrobin.com/thumbs/{astrobin_id_clean}_1824x0_q100_watermark.jpg"
+            
+            # Try to load image
+            response = requests.get(thumb_url, timeout=self.load_timeout)
+            
+            if response.status_code == 200:
+                # Load image with PIL
+                image = Image.open(BytesIO(response.content))
+                
+                # Resize for tooltip (max 400x300)
+                image.thumbnail((400, 300), Image.Resampling.LANCZOS)
+                
+                # Convert to PhotoImage
+                photo = ImageTk.PhotoImage(image)
+                
+                # Cache the image
+                self.image_cache[cache_key] = photo
+                
+                # Display image
+                self._display_image(photo, object_name)
+                
+            else:
+                self._show_error(f"Image not available for {object_name}")
+                
+        except Exception as e:
+            self._show_error(f"Failed to load image: {str(e)}")
+            
+    def _display_image(self, photo, object_name):
+        """Display the loaded image in tooltip."""
+        if not self.tooltip_window:
+            return
+            
+        try:
+            # Clear loading text and show image
+            for widget in self.tooltip_window.winfo_children():
+                widget.destroy()
+                
+            # Create frame for image and label
+            frame = tk.Frame(self.tooltip_window, bg='lightyellow')
+            frame.pack(padx=3, pady=3)
+            
+            # Object name label
+            name_label = tk.Label(
+                frame,
+                text=f"📸 {object_name}",
+                font=("Arial", 10, "bold"),
+                bg="lightyellow",
+                fg="darkblue"
+            )
+            name_label.pack(pady=(0, 3))
+            
+            # Image label with border
+            image_frame = tk.Frame(frame, bg='darkgray', bd=1)
+            image_frame.pack()
+            
+            image_label = tk.Label(image_frame, image=photo, bg='white')
+            image_label.pack(padx=1, pady=1)
+            
+            # Credit label
+            credit_label = tk.Label(
+                frame,
+                text="Source: AstroBin.com",
+                font=("Arial", 8),
+                bg="lightyellow",
+                fg="gray"
+            )
+            credit_label.pack(pady=(3, 0))
+            
+            # Keep reference to prevent garbage collection
+            image_label.image = photo
+            
+        except Exception as e:
+            logging.getLogger(__name__).warning(f"Error displaying image: {e}")
+            
+    def _show_error(self, message):
+        """Show error message in tooltip."""
+        if not self.tooltip_window:
+            return
+            
+        try:
+            # Clear loading text and show error
+            for widget in self.tooltip_window.winfo_children():
+                widget.destroy()
+                
+            error_label = ttk.Label(
+                self.tooltip_window,
+                text=message,
+                background="lightyellow",
+                foreground="red",
+                padding=5
+            )
+            error_label.pack()
+            
+        except Exception as e:
+            logging.getLogger(__name__).warning(f"Error showing error message: {e}")
 
 
 class EnhancedTargetSelectionGUI:
@@ -42,6 +234,8 @@ class EnhancedTargetSelectionGUI:
         self.tree = None
         self.scrollbar_v = None
         self.scrollbar_h = None
+        self.tooltip = None
+        self.tooltip_delay_timer = None
         
         # Column definitions matching UserInterface.md Sections 5-10
         self.setup_column_definitions()
@@ -64,7 +258,7 @@ class EnhancedTargetSelectionGUI:
             ('dec_degrees', 'Dec (deg)', 100),             # From Unnamed: 14
             ('constellation', 'Const', 80),                # From Unnamed: 15
             ('magnitude', 'Mag', 70),                      # From Unnamed: 19
-            ('notes', 'Notes', 200),                       # From Quick Start Guide
+            ('nick', 'Nick', 120),                         # From Unnamed: 16 (user nicknames)
             ('messier_designation', 'Messier', 70),        # From Unnamed: 37
             ('ngc_designation', 'NGC', 70),                # From Unnamed: 34
             ('ic_designation', 'IC', 70)                   # From Unnamed: 35
@@ -142,6 +336,11 @@ class EnhancedTargetSelectionGUI:
         self.tree.bind('<Double-1>', self.on_object_double_click)
         self.tree.bind('<Button-3>', self.show_context_menu)
         
+        # Create tooltip for Astrobin images
+        self.tooltip = AstrobinTooltip(self.tree)
+        self.tree.bind('<Motion>', self.on_tree_motion)
+        self.tree.bind('<Leave>', self.on_tree_leave)
+        
         # Status label
         self.status_label = ttk.Label(
             self.main_frame,
@@ -157,7 +356,7 @@ class EnhancedTargetSelectionGUI:
         self.context_menu.add_command(label="Add to Session", command=self.add_to_session)
         self.context_menu.add_separator()
         self.context_menu.add_command(label="Mark as Observed", command=self.mark_observed)
-        self.context_menu.add_command(label="Add Notes", command=self.add_notes)
+        self.context_menu.add_command(label="Edit Nick", command=self.edit_nick)
         self.context_menu.add_separator()
         self.context_menu.add_command(label="Export to CSV", command=self.export_selection)
         self.context_menu.add_command(label="Copy Coordinates", command=self.copy_coordinates)
@@ -182,11 +381,12 @@ class EnhancedTargetSelectionGUI:
                     [Moon] as dec_raw,
                     [Unnamed: 14] as dec_degrees,
                     [Unnamed: 15] as constellation,
-                    [Quick Start Guide] as notes,
+                    [Unnamed: 16] as nick,
                     [Unnamed: 19] as magnitude,
                     [Unnamed: 34] as ngc_designation,
                     [Unnamed: 35] as ic_designation,
-                    [Unnamed: 37] as messier_designation
+                    [Unnamed: 37] as messier_designation,
+                    [Unnamed: 48] as astrobin_id
                 FROM Main 
                 WHERE [Imm Deep Sky Compendium -  2023 - 4th Edition] IS NOT NULL
                   AND [Imm Deep Sky Compendium -  2023 - 4th Edition] != ''
@@ -612,8 +812,8 @@ class EnhancedTargetSelectionGUI:
             if obj.get('description'):
                 details_text += f"Description:\n{obj.get('description', '')}\n\n"
             
-            if obj.get('notes'):
-                details_text += f"Notes:\n{obj.get('notes', '')}\n"
+            if obj.get('nick'):
+                details_text += f"Nick:\n{obj.get('nick', '')}\n"
             
             text_widget.insert(tk.END, details_text)
             text_widget.config(state=tk.DISABLED)
@@ -633,9 +833,9 @@ class EnhancedTargetSelectionGUI:
         """Mark selected object as observed."""
         messagebox.showinfo("Feature Not Implemented", "Observation logging will be added in a future update.")
     
-    def add_notes(self):
-        """Add notes to selected object."""
-        messagebox.showinfo("Feature Not Implemented", "Note editing will be added in a future update.")
+    def edit_nick(self):
+        """Edit nickname for selected object."""
+        messagebox.showinfo("Feature Not Implemented", "Nick editing will be added in a future update.")
     
     def export_selection(self):
         """Export selected objects to CSV."""
@@ -662,6 +862,67 @@ class EnhancedTargetSelectionGUI:
                     messagebox.showinfo("Copied", f"Coordinates copied to clipboard:\n{coords}")
         except Exception as e:
             self.logger.error(f"Error copying coordinates: {e}")
+    
+    def on_tree_motion(self, event):
+        """Handle mouse motion over tree items."""
+        try:
+            # Cancel any pending tooltip timer
+            if self.tooltip_delay_timer:
+                self.main_frame.after_cancel(self.tooltip_delay_timer)
+                self.tooltip_delay_timer = None
+            
+            # Identify item and column under cursor
+            item_id = self.tree.identify('item', event.x, event.y)
+            column = self.tree.identify('column', event.x, event.y)
+            
+            # Only show tooltip for Object Name column (first column, column '#1')
+            if item_id and column == '#1':
+                # Get object data
+                item_data = self.tree.item(item_id)
+                values = item_data['values']
+                
+                if values:
+                    object_name = values[0]  # First column is object name
+                    
+                    # Find the object in our data to get Astrobin ID
+                    obj_match = self.filtered_objects[
+                        self.filtered_objects['object_name'] == object_name
+                    ]
+                    
+                    if not obj_match.empty:
+                        astrobin_id = obj_match.iloc[0].get('astrobin_id')
+                        if pd.notna(astrobin_id) and str(astrobin_id).strip():
+                            # Schedule tooltip with delay to prevent flickering
+                            self.tooltip_delay_timer = self.main_frame.after(
+                                500,  # 500ms delay
+                                lambda: self.tooltip.show_tooltip(event, astrobin_id, object_name)
+                            )
+                        else:
+                            # No Astrobin ID, hide tooltip immediately
+                            self.tooltip.hide_tooltip()
+                    else:
+                        # Object not found, hide tooltip
+                        self.tooltip.hide_tooltip()
+            else:
+                # Not over Object Name column, hide tooltip
+                self.tooltip.hide_tooltip()
+                
+        except Exception as e:
+            self.logger.warning(f"Error in tree motion handler: {e}")
+            # Hide tooltip on error to prevent stale tooltips
+            self.tooltip.hide_tooltip()
+    
+    def on_tree_leave(self, event):
+        """Handle mouse leaving the tree."""
+        try:
+            # Cancel any pending tooltip timer
+            if self.tooltip_delay_timer:
+                self.main_frame.after_cancel(self.tooltip_delay_timer)
+                self.tooltip_delay_timer = None
+                
+            self.tooltip.hide_tooltip()
+        except Exception as e:
+            self.logger.warning(f"Error in tree leave handler: {e}")
     
     # Interface management methods
     def show(self):
