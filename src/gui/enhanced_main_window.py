@@ -48,6 +48,18 @@ class EnhancedMainWindow:
         # Current time settings
         self.current_time = datetime.now()
         
+        # Active filter tracking for visual feedback
+        self.active_filters = {
+            'declination': False,
+            'size': False,
+            'rating': None,  # Stores the active rating level
+            'catalog': None,  # Stores the active catalog
+            'type': None     # Stores the active object type
+        }
+        
+        # Filter button references for styling
+        self.filter_buttons = {}
+        
         # Load observatory settings from config
         self.load_observatory_config()
         
@@ -444,14 +456,32 @@ class EnhancedMainWindow:
         )
         filter_frame.grid(row=3, column=0, sticky=(tk.W, tk.E), padx=10, pady=5)
         
+        # Active filters status indicator
+        self.setup_filter_status(filter_frame)
+        
         # Create filter button groups
         self.setup_filter_buttons(filter_frame)
+    
+    def setup_filter_status(self, parent):
+        """Setup active filter status display."""
+        status_frame = ttk.Frame(parent)
+        status_frame.grid(row=0, column=0, sticky=(tk.W, tk.E), padx=5, pady=(5, 10))
+        
+        ttk.Label(status_frame, text="Active Filters:", font=("Arial", 9, "bold")).pack(side=tk.LEFT)
+        
+        self.filter_status_label = ttk.Label(
+            status_frame, 
+            text="None", 
+            font=("Arial", 9), 
+            foreground="gray"
+        )
+        self.filter_status_label.pack(side=tk.LEFT, padx=10)
     
     def setup_filter_buttons(self, parent):
         """Setup comprehensive filtering button system."""
         # Declination limits (blue)
         dec_frame = ttk.Frame(parent)
-        dec_frame.grid(row=0, column=0, sticky=(tk.W, tk.E), padx=5, pady=2)
+        dec_frame.grid(row=1, column=0, sticky=(tk.W, tk.E), padx=5, pady=2)
         
         ttk.Label(dec_frame, text="Declination Limits:").pack(side=tk.LEFT)
         
@@ -461,15 +491,17 @@ class EnhancedMainWindow:
         self.max_dec_var = tk.StringVar(value="+90")
         ttk.Entry(dec_frame, textvariable=self.max_dec_var, width=8).pack(side=tk.LEFT, padx=2)
         
-        ttk.Button(
+        self.filter_buttons['declination'] = tk.Button(
             dec_frame, text="Apply Dec Filter",
             command=self.apply_declination_filter,
-            style="Filter.Dec.TButton"
-        ).pack(side=tk.LEFT, padx=5)
+            bg="#f0f8ff", fg="darkblue", font=("Arial", 9),
+            relief="raised", borderwidth=1
+        )
+        self.filter_buttons['declination'].pack(side=tk.LEFT, padx=5)
         
         # Size limits (green)
         size_frame = ttk.Frame(parent)
-        size_frame.grid(row=1, column=0, sticky=(tk.W, tk.E), padx=5, pady=2)
+        size_frame.grid(row=2, column=0, sticky=(tk.W, tk.E), padx=5, pady=2)
         
         ttk.Label(size_frame, text="Size Limits (arcmin):").pack(side=tk.LEFT)
         
@@ -479,56 +511,64 @@ class EnhancedMainWindow:
         self.max_size_var = tk.StringVar(value="999")
         ttk.Entry(size_frame, textvariable=self.max_size_var, width=8).pack(side=tk.LEFT, padx=2)
         
-        ttk.Button(
+        self.filter_buttons['size'] = tk.Button(
             size_frame, text="Apply Size Filter",
             command=self.apply_size_filter,
-            style="Filter.Size.TButton"
-        ).pack(side=tk.LEFT, padx=5)
+            bg="#f0fff0", fg="darkgreen", font=("Arial", 9),
+            relief="raised", borderwidth=1
+        )
+        self.filter_buttons['size'].pack(side=tk.LEFT, padx=5)
         
         # Best targets (red)
         rating_frame = ttk.Frame(parent)
-        rating_frame.grid(row=2, column=0, sticky=(tk.W, tk.E), padx=5, pady=2)
+        rating_frame.grid(row=3, column=0, sticky=(tk.W, tk.E), padx=5, pady=2)
         
         ttk.Label(rating_frame, text="Best Targets:").pack(side=tk.LEFT)
         
         for rating, label in [(5, "Showcase (5)"), (4, "Excellent (4+)"), (3, "Good (3+)")]:
-            ttk.Button(
+            button = tk.Button(
                 rating_frame, text=label,
                 command=lambda r=rating: self.filter_by_rating(r),
-                style="Filter.Rating.TButton"
-            ).pack(side=tk.LEFT, padx=2)
+                bg="#fff0f0", fg="darkred", font=("Arial", 9),
+                relief="raised", borderwidth=1
+            )
+            button.pack(side=tk.LEFT, padx=2)
+            self.filter_buttons[f'rating_{rating}'] = button
         
         # Catalog filters (blue dropdown style)
         catalog_frame = ttk.Frame(parent)
-        catalog_frame.grid(row=3, column=0, sticky=(tk.W, tk.E), padx=5, pady=2)
+        catalog_frame.grid(row=4, column=0, sticky=(tk.W, tk.E), padx=5, pady=2)
         
         ttk.Label(catalog_frame, text="Catalogs:").pack(side=tk.LEFT)
         
         self.catalog_var = tk.StringVar()
-        catalog_combo = ttk.Combobox(
+        self.filter_buttons['catalog'] = ttk.Combobox(
             catalog_frame, textvariable=self.catalog_var,
             values=["All", "Messier", "NGC", "IC", "Caldwell", "Sharpless", "Barnard"],
             width=15, state="readonly"
         )
-        catalog_combo.pack(side=tk.LEFT, padx=5)
-        catalog_combo.bind('<<ComboboxSelected>>', self.on_catalog_filter_changed)
+        self.filter_buttons['catalog'].pack(side=tk.LEFT, padx=5)
+        self.filter_buttons['catalog'].bind('<<ComboboxSelected>>', self.on_catalog_filter_changed)
         
         # Object type filters (brown)
         type_frame = ttk.Frame(parent)
-        type_frame.grid(row=4, column=0, sticky=(tk.W, tk.E), padx=5, pady=2)
+        type_frame.grid(row=5, column=0, sticky=(tk.W, tk.E), padx=5, pady=2)
         
         ttk.Label(type_frame, text="Object Types:").pack(side=tk.LEFT)
         
         for obj_type in ["Galaxies", "Nebulae", "Clusters", "Planetary Nebulae"]:
-            ttk.Button(
+            button = tk.Button(
                 type_frame, text=obj_type,
                 command=lambda t=obj_type: self.filter_by_type(t),
-                style="Filter.Type.TButton"
-            ).pack(side=tk.LEFT, padx=2)
+                bg="#fdf5e6", fg="saddlebrown", font=("Arial", 9),
+                relief="raised", borderwidth=1
+            )
+            button.pack(side=tk.LEFT, padx=2)
+            self.filter_buttons[f'type_{obj_type.lower().replace(" ", "_")}'] = button
         
         # Sorting controls (gray)
         sort_frame = ttk.Frame(parent)
-        sort_frame.grid(row=5, column=0, sticky=(tk.W, tk.E), padx=5, pady=2)
+        sort_frame.grid(row=6, column=0, sticky=(tk.W, tk.E), padx=5, pady=2)
         
         ttk.Label(sort_frame, text="Sorting:").pack(side=tk.LEFT)
         
@@ -552,16 +592,16 @@ class EnhancedMainWindow:
         
         # Clear filters (black)
         clear_frame = ttk.Frame(parent)
-        clear_frame.grid(row=6, column=0, sticky=(tk.W, tk.E), padx=5, pady=5)
+        clear_frame.grid(row=7, column=0, sticky=(tk.W, tk.E), padx=5, pady=5)
         
         ttk.Button(
-            clear_frame, text="Clear All Filters",
+            clear_frame, text="Clear Filters (Keep Values)",
             command=self.clear_filters,
             style="Filter.Clear.TButton"
         ).pack(side=tk.LEFT, padx=5)
         
         ttk.Button(
-            clear_frame, text="Reset to Defaults",
+            clear_frame, text="Reset Values & Filters",
             command=self.reset_filters,
             style="Filter.Clear.TButton"
         ).pack(side=tk.LEFT, padx=5)
@@ -618,12 +658,156 @@ class EnhancedMainWindow:
         # Sort buttons
         style.configure("Sort.TButton", foreground="darkgreen")
         
-        # Filter buttons with different colors
-        style.configure("Filter.Dec.TButton", foreground="blue")
-        style.configure("Filter.Size.TButton", foreground="green") 
-        style.configure("Filter.Rating.TButton", foreground="red")
-        style.configure("Filter.Type.TButton", foreground="brown")
-        style.configure("Filter.Clear.TButton", foreground="black", font=("Arial", 9, "bold"))
+        # Filter buttons with different colors - inactive state (lighter, subtle)
+        style.configure("Filter.Dec.TButton", 
+                       foreground="darkblue", 
+                       background="#f0f8ff",  # AliceBlue
+                       borderwidth=1,
+                       relief="raised")
+        style.configure("Filter.Size.TButton", 
+                       foreground="darkgreen", 
+                       background="#f0fff0",  # Honeydew
+                       borderwidth=1,
+                       relief="raised") 
+        style.configure("Filter.Rating.TButton", 
+                       foreground="darkred", 
+                       background="#fff0f0",  # Light pink
+                       borderwidth=1,
+                       relief="raised")
+        style.configure("Filter.Type.TButton", 
+                       foreground="saddlebrown", 
+                       background="#fdf5e6",  # OldLace
+                       borderwidth=1,
+                       relief="raised")
+        style.configure("Filter.Clear.TButton", 
+                       foreground="black", 
+                       font=("Arial", 9, "bold"))
+        
+        # Filter buttons - active state (bold, prominent colors with strong borders)
+        style.configure("Filter.Dec.Active.TButton", 
+                       foreground="white", 
+                       background="#0066cc",  # Strong blue
+                       font=("Arial", 10, "bold"),
+                       borderwidth=3,
+                       focuscolor="yellow",
+                       relief="raised")
+        style.configure("Filter.Size.Active.TButton", 
+                       foreground="white", 
+                       background="#009900",  # Strong green
+                       font=("Arial", 10, "bold"),
+                       borderwidth=3,
+                       focuscolor="yellow",
+                       relief="raised")
+        style.configure("Filter.Rating.Active.TButton", 
+                       foreground="white", 
+                       background="#cc0000",  # Strong red
+                       font=("Arial", 10, "bold"),
+                       borderwidth=3,
+                       focuscolor="yellow",
+                       relief="raised")
+        style.configure("Filter.Type.Active.TButton", 
+                       foreground="white", 
+                       background="#8B4513",  # SaddleBrown
+                       font=("Arial", 10, "bold"),
+                       borderwidth=3,
+                       focuscolor="yellow",
+                       relief="raised")
+        style.configure("Filter.Catalog.Active.TButton", 
+                       foreground="white", 
+                       background="#003366",  # Dark navy
+                       font=("Arial", 10, "bold"),
+                       borderwidth=3,
+                       focuscolor="yellow",
+                       relief="raised")
+    
+    # Filter state management methods
+    def update_filter_button_style(self, filter_type, is_active):
+        """Update filter button style and text based on active state."""
+        if filter_type not in self.filter_buttons:
+            return
+        
+        button = self.filter_buttons[filter_type]
+        
+        # Update style and text based on filter type
+        if filter_type == 'declination':
+            if is_active:
+                button.configure(bg="#0066cc", fg="white", font=("Arial", 9, "bold"), text="🔵 Apply Dec Filter")
+            else:
+                button.configure(bg="#f0f8ff", fg="darkblue", font=("Arial", 9), text="Apply Dec Filter")
+        elif filter_type == 'size':
+            if is_active:
+                button.configure(bg="#009900", fg="white", font=("Arial", 9, "bold"), text="🟢 Apply Size Filter")
+            else:
+                button.configure(bg="#f0fff0", fg="darkgreen", font=("Arial", 9), text="Apply Size Filter")
+        elif filter_type.startswith('rating_'):
+            # Get the original button text and add/remove indicator
+            current_text = button.cget('text')
+            base_text = current_text.replace('🔴 ', '').replace('● ', '')
+            if is_active:
+                button.configure(bg="#cc0000", fg="white", font=("Arial", 9, "bold"), text=f"🔴 {base_text}")
+            else:
+                button.configure(bg="#fff0f0", fg="darkred", font=("Arial", 9), text=base_text)
+        elif filter_type.startswith('type_'):
+            # Get the original button text and add/remove indicator
+            current_text = button.cget('text')
+            base_text = current_text.replace('🟤 ', '').replace('● ', '')
+            if is_active:
+                button.configure(bg="#8B4513", fg="white", font=("Arial", 9, "bold"), text=f"🟤 {base_text}")
+            else:
+                button.configure(bg="#fdf5e6", fg="saddlebrown", font=("Arial", 9), text=base_text)
+        elif filter_type == 'catalog':
+            # Special handling for combobox - limited styling options
+            try:
+                if is_active:
+                    button.configure(foreground="white", background="#003366", font=("Arial", 9, "bold"))
+                else:
+                    button.configure(foreground="black", background="white", font=("Arial", 9))
+            except:
+                pass  # Some combobox styling might not work on all systems
+            return
+        else:
+            return
+    
+    def reset_all_filter_styles(self):
+        """Reset all filter buttons to inactive state."""
+        for filter_type in self.filter_buttons:
+            self.update_filter_button_style(filter_type, False)
+        
+        # Clear active filter tracking
+        self.active_filters = {
+            'declination': False,
+            'size': False,
+            'rating': None,
+            'catalog': None,
+            'type': None
+        }
+        
+        # Update status display
+        self.update_filter_status_display()
+    
+    def update_filter_status_display(self):
+        """Update the active filters status display."""
+        if not hasattr(self, 'filter_status_label'):
+            return
+            
+        active_list = []
+        
+        if self.active_filters['declination']:
+            active_list.append("Declination")
+        if self.active_filters['size']:
+            active_list.append("Size")
+        if self.active_filters['rating']:
+            active_list.append(f"Rating {self.active_filters['rating']}+")
+        if self.active_filters['catalog']:
+            active_list.append(f"Catalog: {self.active_filters['catalog']}")
+        if self.active_filters['type']:
+            active_list.append(f"Type: {self.active_filters['type']}")
+        
+        if active_list:
+            status_text = " | ".join(active_list)
+            self.filter_status_label.config(text=status_text, foreground="darkgreen")
+        else:
+            self.filter_status_label.config(text="None", foreground="gray")
     
     # Event handlers and functionality methods
     def set_time_now(self):
@@ -959,7 +1143,13 @@ class EnhancedMainWindow:
             max_dec = float(self.max_dec_var.get())
             if hasattr(self, 'target_selection_gui'):
                 self.target_selection_gui.apply_declination_filter(min_dec, max_dec)
-            self.update_status(f"Filtered by declination: {min_dec}° to {max_dec}°")
+            
+            # Update visual state
+            self.active_filters['declination'] = True
+            self.update_filter_button_style('declination', True)
+            self.update_filter_status_display()
+            
+            self.update_status(f"[ACTIVE] Filtered by declination: {min_dec}° to {max_dec}°")
         except ValueError:
             messagebox.showerror("Invalid Input", "Please enter valid declination values")
     
@@ -970,7 +1160,13 @@ class EnhancedMainWindow:
             max_size = float(self.max_size_var.get())
             if hasattr(self, 'target_selection_gui'):
                 self.target_selection_gui.apply_size_filter(min_size, max_size)
-            self.update_status(f"Filtered by size: {min_size}' to {max_size}'")
+            
+            # Update visual state
+            self.active_filters['size'] = True
+            self.update_filter_button_style('size', True)
+            self.update_filter_status_display()
+            
+            self.update_status(f"[ACTIVE] Filtered by size: {min_size}' to {max_size}'")
         except ValueError:
             messagebox.showerror("Invalid Input", "Please enter valid size values")
     
@@ -978,36 +1174,79 @@ class EnhancedMainWindow:
         """Filter by minimum rating."""
         if hasattr(self, 'target_selection_gui'):
             self.target_selection_gui.apply_rating_filter(min_rating)
-        self.update_status(f"Filtered by rating: {min_rating}+ stars")
+        
+        # Update visual state - first reset all rating buttons
+        for rating in [3, 4, 5]:
+            self.update_filter_button_style(f'rating_{rating}', False)
+        
+        # Activate the selected rating button
+        self.active_filters['rating'] = min_rating
+        self.update_filter_button_style(f'rating_{min_rating}', True)
+        self.update_filter_status_display()
+        
+        self.update_status(f"[ACTIVE] Filtered by rating: {min_rating}+ stars")
     
     def on_catalog_filter_changed(self, event=None):
         """Handle catalog filter selection."""
         catalog = self.catalog_var.get()
         if hasattr(self, 'target_selection_gui'):
             self.target_selection_gui.apply_catalog_filter(catalog)
-        self.update_status(f"Filtered by catalog: {catalog}")
+        
+        # Update visual state
+        is_active = catalog and catalog != "All"
+        self.active_filters['catalog'] = catalog if is_active else None
+        self.update_filter_button_style('catalog', is_active)
+        self.update_filter_status_display()
+        
+        status = f"[ACTIVE] Filtered by catalog: {catalog}" if is_active else "Catalog filter cleared"
+        self.update_status(status)
     
     def filter_by_type(self, obj_type):
         """Filter by object type."""
         if hasattr(self, 'target_selection_gui'):
             self.target_selection_gui.apply_type_filter(obj_type)
-        self.update_status(f"Filtered by type: {obj_type}")
+        
+        # Update visual state - first reset all type buttons
+        type_keys = ['galaxies', 'nebulae', 'clusters', 'planetary_nebulae']
+        for type_key in type_keys:
+            self.update_filter_button_style(f'type_{type_key}', False)
+        
+        # Activate the selected type button
+        type_key = obj_type.lower().replace(" ", "_")
+        self.active_filters['type'] = obj_type
+        self.update_filter_button_style(f'type_{type_key}', True)
+        self.update_filter_status_display()
+        
+        self.update_status(f"[ACTIVE] Filtered by type: {obj_type}")
     
     def clear_filters(self):
-        """Clear all active filters."""
+        """Clear all active filters but preserve declination and size input values."""
         if hasattr(self, 'target_selection_gui'):
             self.target_selection_gui.clear_all_filters()
-        self.update_status("All filters cleared")
+        
+        # Reset visual state
+        self.reset_all_filter_styles()
+        
+        # Clear only catalog selection, preserve declination and size values
+        self.catalog_var.set("")
+        
+        self.update_status("[CLEARED] All filters cleared - input values preserved")
     
     def reset_filters(self):
-        """Reset filters to default values."""
+        """Reset all filter values to defaults and clear all active filters."""
+        # Reset form values to defaults
         self.min_dec_var.set("-30")
         self.max_dec_var.set("+90")
         self.min_size_var.set("0")
         self.max_size_var.set("999")
         self.catalog_var.set("")
-        self.clear_filters()
-        self.update_status("Filters reset to defaults")
+        
+        # Clear filters and reset visual state
+        if hasattr(self, 'target_selection_gui'):
+            self.target_selection_gui.clear_all_filters()
+        
+        self.reset_all_filter_styles()
+        self.update_status("[RESET] All filters and values reset to defaults")
     
     def update_status(self, message):
         """Update status message."""
