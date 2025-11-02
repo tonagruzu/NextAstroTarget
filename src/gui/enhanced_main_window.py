@@ -1032,11 +1032,11 @@ class EnhancedMainWindow:
         moon_alt, moon_az = self.astro_calc.calculate_moon_position(
             self.current_time, self.observatory['latitude'], self.observatory['longitude']
         )
-        moon_phase = self.astro_calc.calculate_moon_phase(self.current_time)
+        moon_phase_data = self.astro_calc.calculate_moon_phase(self.current_time)
         
         self.moon_alt_label.config(text=f"Altitude: {moon_alt:.1f}°")
         self.moon_az_label.config(text=f"Azimuth: {moon_az:.1f}°")
-        self.moon_phase_label.config(text=f"Phase: {moon_phase:.0f}%")
+        self.moon_phase_label.config(text=f"Phase: {moon_phase_data['phase_name']} ({moon_phase_data['illumination']:.0f}%)")
         
         # Calculate and update moon times (moonrise/moonset)
         moon_times = self.astro_calc.calculate_moon_times(
@@ -1056,58 +1056,96 @@ class EnhancedMainWindow:
         
         # Add moon status
         if moon_alt > 0:
-            moon_status = "Above horizon"
-            if moon_phase > 90:
-                moon_status += " (Full)"
-            elif moon_phase > 50:
-                moon_status += " (Gibbous)"
-            elif moon_phase > 10:
-                moon_status += " (Crescent)"
-            else:
-                moon_status += " (New)"
+            moon_status = f"Above horizon ({moon_phase_data['phase_name']})"
         else:
-            moon_status = "Below horizon"
+            moon_status = f"Below horizon ({moon_phase_data['phase_name']})"
         
         self.moon_status_label.config(text=f"Status: {moon_status}")
         
         # Update moon phase graphic
-        self.draw_moon_phase(moon_phase)
+        self.draw_moon_phase(moon_phase_data)
     
-    def draw_moon_phase(self, phase_percent):
-        """Draw moon phase graphic on larger canvas."""
+    def draw_moon_phase(self, phase_data):
+        """Draw accurate moon phase graphic based on lunar cycle position."""
         self.moon_canvas.delete("all")
         
-        # Larger moon circle (80x80 canvas)
+        # Canvas dimensions
         margin = 5
         size = 70
         center = 40
         
-        # Draw moon circle
+        illumination = phase_data['illumination']
+        cycle_position = phase_data['cycle_position']
+        is_waxing = phase_data['is_waxing']
+        
+        # Draw main moon circle (lit portion)
         self.moon_canvas.create_oval(margin, margin, margin + size, margin + size, 
-                                   fill="white", outline="lightgray", width=2)
+                                   fill="#F5F5DC", outline="gray", width=1)  # Beige color for moon
         
-        # Draw shadow for phase (simplified but effective)
-        if phase_percent < 50:
-            # Waxing - shadow on right side
-            shadow_width = int((50 - phase_percent) / 50 * size)
-            if shadow_width > 0:
-                self.moon_canvas.create_arc(
-                    margin, margin, margin + size, margin + size, 
-                    start=270, extent=180, fill="black", outline="black"
-                )
+        # Calculate shadow coverage based on cycle position
+        if illumination < 1:  # New Moon
+            # Almost completely dark
+            self.moon_canvas.create_oval(margin + 1, margin + 1, margin + size - 1, margin + size - 1, 
+                                       fill="#2F2F2F", outline="")
+        elif illumination > 99:  # Full Moon  
+            # Keep the light circle as is
+            pass
         else:
-            # Waning - shadow on left side
-            shadow_width = int((phase_percent - 50) / 50 * size)
-            if shadow_width > 0:
-                self.moon_canvas.create_arc(
-                    margin, margin, margin + size, margin + size, 
-                    start=90, extent=180, fill="black", outline="black"
-                )
+            # Partial phases - create accurate shadow
+            # Calculate the position of the terminator (day/night boundary)
+            
+            if is_waxing:
+                # Waxing phases: shadow on the left, light on the right
+                if illumination <= 50:  # New to First Quarter
+                    # Create a shadow that gradually reveals the right side
+                    shadow_width = size * (1 - illumination / 50)
+                    self.moon_canvas.create_oval(
+                        margin, margin, 
+                        margin + shadow_width, margin + size, 
+                        fill="#2F2F2F", outline=""
+                    )
+                else:  # First Quarter to Full
+                    # Create an elliptical shadow on the left
+                    shadow_offset = (size / 2) * (2 - illumination / 50)
+                    if shadow_offset > 0:
+                        self.moon_canvas.create_oval(
+                            margin - shadow_offset, margin,
+                            margin + size - shadow_offset, margin + size,
+                            fill="#2F2F2F", outline=""
+                        )
+            else:
+                # Waning phases: shadow on the right, light on the left
+                if illumination <= 50:  # Last Quarter to New
+                    # Create a shadow that gradually covers the left side
+                    shadow_start = size * (illumination / 50)
+                    self.moon_canvas.create_oval(
+                        margin + shadow_start, margin,
+                        margin + size, margin + size,
+                        fill="#2F2F2F", outline=""
+                    )
+                else:  # Full to Last Quarter
+                    # Create an elliptical shadow on the right
+                    shadow_offset = (size / 2) * (2 - illumination / 50)
+                    if shadow_offset > 0:
+                        self.moon_canvas.create_oval(
+                            margin + shadow_offset, margin,
+                            margin + size + shadow_offset, margin + size,
+                            fill="#2F2F2F", outline=""
+                        )
         
-        # Add phase percentage text
+        # Add outer circle for definition
+        self.moon_canvas.create_oval(margin, margin, margin + size, margin + size, 
+                                   fill="", outline="gray", width=2)
+        
+        # Add phase information text
         self.moon_canvas.create_text(center, margin + size + 10, 
-                                   text=f"{phase_percent:.0f}%", 
+                                   text=f"{illumination:.0f}%", 
                                    font=("Arial", 9, "bold"))
+        
+        # Add phase name
+        self.moon_canvas.create_text(center, margin + size + 25, 
+                                   text=phase_data['phase_name'], 
+                                   font=("Arial", 8), fill="gray")
     
     def update_current_time(self):
         """Update current time display every second."""

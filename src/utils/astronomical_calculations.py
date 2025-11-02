@@ -186,36 +186,70 @@ class AstronomicalCalculator:
             self.logger.error(f"Error calculating moon position: {e}")
             return 0.0, 0.0
     
-    def calculate_moon_phase(self, dt: datetime) -> float:
+    def calculate_moon_phase(self, dt: datetime) -> Dict[str, Any]:
         """
-        Calculate moon phase percentage (0-100).
-        Returns: phase percentage (0 = new moon, 50 = first/last quarter, 100 = full moon)
+        Calculate moon phase with accurate lunar cycle representation.
+        Returns: Dictionary with phase percentage, phase name, and illumination details
         """
         try:
             jd = self.julian_day(dt)
             
-            # Days since known new moon (Jan 6, 2000)
-            days_since_new = jd - 2451549.5
+            # More accurate new moon reference: January 6, 2000 18:14 UTC (JD 2451549.2597)
+            reference_new_moon = 2451549.2597
             
-            # Synodic period is approximately 29.53 days
+            # Synodic period (average time between new moons)
             synodic_period = 29.530588853
             
-            # Calculate phase
-            phase = (days_since_new % synodic_period) / synodic_period
+            # Calculate days since reference new moon
+            days_since_new = jd - reference_new_moon
             
-            # Convert to percentage (0-100)
-            if phase < 0.5:
-                # Waxing - 0 to 100%
-                phase_percent = phase * 200
+            # Current lunar cycle position (0.0 to 1.0)
+            cycle_position = (days_since_new % synodic_period) / synodic_period
+            
+            # Ensure positive value
+            if cycle_position < 0:
+                cycle_position += 1.0
+            
+            # Calculate illumination percentage (0-100%)
+            # Moon is fully illuminated at cycle_position = 0.5 (full moon)
+            if cycle_position <= 0.5:
+                # Waxing phase: 0% to 100%
+                illumination = cycle_position * 200
+                is_waxing = True
             else:
-                # Waning - 100 to 0%
-                phase_percent = (1 - phase) * 200
+                # Waning phase: 100% to 0%
+                illumination = (1.0 - cycle_position) * 200
+                is_waxing = False
             
-            return max(0, min(100, phase_percent))
+            # Determine phase name
+            if illumination < 1:
+                phase_name = "New Moon"
+            elif illumination < 49:
+                phase_name = "Waxing Crescent" if is_waxing else "Waning Crescent"
+            elif illumination < 51:
+                phase_name = "First Quarter" if is_waxing else "Last Quarter"
+            elif illumination < 99:
+                phase_name = "Waxing Gibbous" if is_waxing else "Waning Gibbous"
+            else:
+                phase_name = "Full Moon"
+            
+            return {
+                'illumination': max(0, min(100, illumination)),
+                'cycle_position': cycle_position,
+                'phase_name': phase_name,
+                'is_waxing': is_waxing,
+                'days_since_new': days_since_new % synodic_period
+            }
             
         except Exception as e:
             self.logger.error(f"Error calculating moon phase: {e}")
-            return 0.0
+            return {
+                'illumination': 0.0,
+                'cycle_position': 0.0,
+                'phase_name': 'Unknown',
+                'is_waxing': True,
+                'days_since_new': 0.0
+            }
     
     def calculate_sun_times(self, latitude: float, longitude: float, target_date: date) -> Dict[str, datetime]:
         """

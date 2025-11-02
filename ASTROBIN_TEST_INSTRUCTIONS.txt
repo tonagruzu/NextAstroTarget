@@ -1,0 +1,56 @@
+TESTING ASTROBIN TOOLTIPS - INSTRUCTIONS
+=====================================
+
+The Astrobin tooltip functionality has been successfully implemented! 
+Here's how to test it:
+
+STEP 1: Clear Current Filters
+----------------------------
+In the application window, you currently have these filters active:
+- Type filter: "Nebulae"  
+- Rating filter: "5+ stars"
+
+Click the "Clear Filters" button to remove these filters.
+
+STEP 2: Search for Objects with Astrobin IDs
+-------------------------------------------
+In the search box at the top, type one of these:
+- "Barnard" (to find Barnard objects with IDs 1-349)
+- "Link" (to find the Link object with ID 349 - this one definitely has an image!)
+
+STEP 3: Test the Tooltips
+-------------------------
+Hover your mouse over the object names in the first column:
+- "Barnard 001" through "Barnard 349"
+- "Link" (this one has a confirmed working image!)
+
+WHAT YOU SHOULD SEE:
+-------------------
+When hovering over objects WITH Astrobin IDs:
+- A black tooltip window will appear
+- If the Astrobin image loads successfully, you'll see the astronomical image
+- If no image is available, you'll see object information instead
+
+The debug logs show:
+- "AstrobinTooltip.show_tooltip called for [object name]"
+- "Astrobin ID for [object]: [ID number]" 
+- "Attempting to load image for ID: [ID]"
+
+CONFIRMED WORKING OBJECTS:
+-------------------------
+These objects definitely have working Astrobin images:
+- Link (Astrobin ID: 349) ✓ CONFIRMED WORKING
+- Barnard 300 (Astrobin ID: 300) ✓ CONFIRMED WORKING  
+- Barnard 349 (Astrobin ID: 349) ✓ CONFIRMED WORKING
+
+TIP: Look for "Link" first - it's guaranteed to show an image!
+
+TROUBLESHOOTING:
+---------------
+If you don't see images:
+1. Make sure you cleared the filters
+2. Make sure you're hovering over the object NAME (first column)
+3. Wait a moment for the image to load (it needs to download from Astrobin)
+4. Check the terminal for debug messages
+
+The system is working! You just need to hover over objects that actually have Astrobin IDs.

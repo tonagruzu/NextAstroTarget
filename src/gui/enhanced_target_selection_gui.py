@@ -23,16 +23,21 @@ from src.database.database_manager import DatabaseManager
 from src.utils.astronomical_calculations import AstronomicalCalculator
 
 
-class ObjectTooltip:
-    """Tooltip that displays object information when hovering over object names."""
+class AstrobinTooltip:
+    """Tooltip that displays Astrobin images when hovering over object names."""
     
     def __init__(self, widget):
         self.widget = widget
         self.tooltip_window = None
-        self.current_object = None  # Track current hover target
+        self.current_object = None
+        self.logger = logging.getLogger(__name__)
+        self.image_cache = {}  # Cache loaded images
         
     def show_tooltip(self, event, object_data, object_name):
-        """Show tooltip with object information."""
+        """Show tooltip with Astrobin image and object information."""
+        # Debug logging
+        self.logger.info(f"AstrobinTooltip.show_tooltip called for {object_name}")
+        
         # Avoid showing tooltip for the same object repeatedly
         if self.tooltip_window and self.current_object == object_name:
             return
@@ -46,7 +51,7 @@ class ObjectTooltip:
             # Create tooltip window
             self.tooltip_window = tk.Toplevel(self.widget)
             self.tooltip_window.wm_overrideredirect(True)
-            self.tooltip_window.configure(bg='lightblue')
+            self.tooltip_window.configure(bg='black', bd=2, relief='solid')
             
             # Position near cursor, but ensure it stays on screen
             x = event.x_root + 15
@@ -56,75 +61,167 @@ class ObjectTooltip:
             screen_width = self.tooltip_window.winfo_screenwidth()
             screen_height = self.tooltip_window.winfo_screenheight()
             
-            # Adjust position if needed
-            if x + 300 > screen_width:
-                x = event.x_root - 300
-            if y + 150 > screen_height:
-                y = event.y_root - 150
+            # Adjust position if needed (account for larger tooltip)
+            if x + 400 > screen_width:
+                x = event.x_root - 400
+            if y + 300 > screen_height:
+                y = event.y_root - 300
                 
             self.tooltip_window.geometry(f"+{x}+{y}")
             
-            # Create info frame
-            info_frame = tk.Frame(self.tooltip_window, bg='lightblue', padx=10, pady=8)
-            info_frame.pack()
+            # Create main frame
+            main_frame = tk.Frame(self.tooltip_window, bg='black', padx=5, pady=5)
+            main_frame.pack()
             
             # Object name (header)
             name_label = tk.Label(
-                info_frame,
+                main_frame,
                 text=f"🌌 {object_name}",
                 font=("Arial", 11, "bold"),
-                bg="lightblue",
-                fg="darkblue"
+                bg="black",
+                fg="white"
             )
-            name_label.pack(anchor='w')
+            name_label.pack(anchor='w', pady=(0, 5))
             
-            # Object details
-            details = []
-            if object_data.get('object_type'):
-                details.append(f"Type: {object_data['object_type']}")
-            if object_data.get('constellation'):
-                details.append(f"Constellation: {object_data['constellation']}")
-            if object_data.get('magnitude'):
-                details.append(f"Magnitude: {object_data['magnitude']}")
-            if object_data.get('size_arcmin'):
-                details.append(f"Size: {object_data['size_arcmin']}'")
-            if object_data.get('rating'):
-                stars = "⭐" * min(int(float(object_data['rating'])), 5)
-                details.append(f"Rating: {stars}")
+            # Try to load and display Astrobin image
+            astrobin_id = object_data.get('astrobin_id')
+            self.logger.info(f"Astrobin ID for {object_name}: {astrobin_id}")
+            image_loaded = False
             
-            # Display details
-            for detail in details[:5]:  # Limit to 5 lines
-                detail_label = tk.Label(
-                    info_frame,
-                    text=detail,
-                    font=("Arial", 9),
-                    bg="lightblue",
-                    fg="black"
-                )
-                detail_label.pack(anchor='w')
+            if astrobin_id and pd.notna(astrobin_id):
+                try:
+                    # Clean the ID
+                    astrobin_id_clean = str(int(float(astrobin_id)))
+                    self.logger.info(f"Attempting to load image for ID: {astrobin_id_clean}")
+                    image_loaded = self._load_astrobin_image(main_frame, astrobin_id_clean, object_name)
+                except (ValueError, TypeError):
+                    self.logger.debug(f"Invalid Astrobin ID format: {astrobin_id}")
+            else:
+                self.logger.info(f"No valid Astrobin ID found for {object_name}")
             
-            # Nick/Nickname if available
-            if object_data.get('nick') and pd.notna(object_data['nick']):
-                nick_label = tk.Label(
-                    info_frame,
-                    text=f"💫 \"{object_data['nick']}\"",
-                    font=("Arial", 9, "italic"),
-                    bg="lightblue",
-                    fg="purple"
-                )
-                nick_label.pack(anchor='w', pady=(3, 0))
-            
+            # If no image loaded, show object information
+            if not image_loaded:
+                self._show_object_info(main_frame, object_data, object_name)
+                
         except Exception as e:
-            logging.getLogger(__name__).warning(f"Error showing tooltip: {e}")
+            self.logger.warning(f"Error showing Astrobin tooltip: {e}")
             
+    def _load_astrobin_image(self, parent_frame, astrobin_id, object_name):
+        """Try to load image from Astrobin."""
+        self.logger.info(f"_load_astrobin_image called for ID {astrobin_id}")
+        try:
+            # Check cache first
+            cache_key = f"astrobin_{astrobin_id}"
+            if cache_key in self.image_cache:
+                photo = self.image_cache[cache_key]
+                if photo:
+                    self.logger.info(f"Using cached image for ID {astrobin_id}")
+                    image_label = tk.Label(parent_frame, image=photo, bg='black')
+                    image_label.pack(pady=(0, 5))
+                    return True
+                else:
+                    self.logger.info(f"Cached negative result for ID {astrobin_id}")
+                    return False
+            
+            # Try to fetch image from Astrobin
+            url = f"https://www.astrobin.com/{astrobin_id}/0/rawthumb/regular/"
+            self.logger.info(f"Fetching image from: {url}")
+            
+            headers = {
+                'User-Agent': 'NextAstroTarget/1.1.0 (Astronomy Application)',
+                'Accept': 'image/*,*/*;q=0.8'
+            }
+            
+            response = requests.get(url, headers=headers, timeout=5)
+            self.logger.info(f"Response status: {response.status_code}")
+            
+            if response.status_code == 200:
+                # Load and resize image
+                img = Image.open(BytesIO(response.content))
+                
+                # Resize image to fit tooltip (max 300x250)
+                img.thumbnail((300, 250), Image.Resampling.LANCZOS)
+                
+                # Convert to PhotoImage
+                photo = ImageTk.PhotoImage(img)
+                
+                # Cache the image
+                self.image_cache[cache_key] = photo
+                
+                # Display image
+                image_label = tk.Label(parent_frame, image=photo, bg='black')
+                image_label.pack(pady=(0, 5))
+                
+                # Add credit label
+                credit_label = tk.Label(
+                    parent_frame,
+                    text=f"📸 AstroBin ID: {astrobin_id}",
+                    font=("Arial", 8),
+                    bg="black",
+                    fg="gray"
+                )
+                credit_label.pack(anchor='w')
+                
+                return True
+            else:
+                # Cache negative result to avoid repeated requests
+                self.image_cache[cache_key] = None
+                return False
+                
+        except Exception as e:
+            self.logger.debug(f"Failed to load Astrobin image for ID {astrobin_id}: {e}")
+            # Cache negative result
+            self.image_cache[f"astrobin_{astrobin_id}"] = None
+            return False
+    
+    def _show_object_info(self, parent_frame, object_data, object_name):
+        """Show object information when no image is available."""
+        # Create info frame with different background
+        info_frame = tk.Frame(parent_frame, bg='navy', padx=8, pady=5)
+        info_frame.pack(fill='x')
+        
+        # Object details
+        details = []
+        if object_data.get('object_type'):
+            details.append(f"Type: {object_data['object_type']}")
+        if object_data.get('constellation'):
+            details.append(f"Constellation: {object_data['constellation']}")
+        if object_data.get('magnitude'):
+            details.append(f"Magnitude: {object_data['magnitude']}")
+        if object_data.get('size_arcmin'):
+            details.append(f"Size: {object_data['size_arcmin']}'")
+        if object_data.get('rating'):
+            stars = "⭐" * min(int(float(object_data['rating'])), 5)
+            details.append(f"Rating: {stars}")
+        
+        # Display details
+        for detail in details[:5]:
+            detail_label = tk.Label(
+                info_frame,
+                text=detail,
+                font=("Arial", 9),
+                bg="navy",
+                fg="white"
+            )
+            detail_label.pack(anchor='w')
+        
+        # Nick/Nickname if available
+        if object_data.get('nick') and pd.notna(object_data['nick']):
+            nick_label = tk.Label(
+                info_frame,
+                text=f"💫 \"{object_data['nick']}\"",
+                font=("Arial", 9, "italic"),
+                bg="navy",
+                fg="cyan"
+            )
+            nick_label.pack(anchor='w', pady=(3, 0))
+    
     def hide_tooltip(self, event=None):
         """Hide the tooltip."""
         if self.tooltip_window:
             self.tooltip_window.destroy()
             self.tooltip_window = None
             self.current_object = None
-            
-
 
 
 class EnhancedTargetSelectionGUI:
@@ -152,12 +249,27 @@ class EnhancedTargetSelectionGUI:
         self.tooltip = None
         self.tooltip_delay_timer = None
         
+        # Search and filter components
+        self.search_var = None
+        self.search_entry = None
+        self.astrobin_filter_var = None
+        self.clear_search_btn = None
+        self.astrobin_filter_check = None
+        self.filter_status_label = None
+        
         # Column definitions matching UserInterface.md Sections 5-10
         self.setup_column_definitions()
+        
+        # Status update callback
+        self.update_status_callback = None
         
         # Initialize GUI
         self.setup_gui()
         self.load_objects()
+    
+    def set_status_callback(self, callback):
+        """Set callback function for status updates."""
+        self.update_status_callback = callback
     
     def setup_column_definitions(self):
         """Define columns based on available data from the Main table."""
@@ -197,7 +309,10 @@ class EnhancedTargetSelectionGUI:
         self.main_frame = ttk.Frame(self.parent_frame)
         self.main_frame.pack(fill=tk.BOTH, expand=True)
         
-        # Create treeview with all columns
+        # Create filtering controls (above the object list)
+        self.create_filtering_controls()
+        
+        # Create treeview with all columns (below the controls)
         self.create_enhanced_treeview()
         
         # Create context menu
@@ -206,11 +321,135 @@ class EnhancedTargetSelectionGUI:
         # Setup automatic updates
         self.start_update_timer()
     
+    def create_filtering_controls(self):
+        """Create filtering controls above the object list."""
+        # Create main controls frame
+        controls_frame = ttk.LabelFrame(self.main_frame, text="Search & Filtering Controls", padding=10)
+        controls_frame.pack(fill='x', padx=5, pady=5)
+        
+        # First row: Search box and clear button
+        search_row = ttk.Frame(controls_frame)
+        search_row.pack(fill='x', pady=(0, 10))
+        
+        # Search label and entry
+        ttk.Label(search_row, text="Search Objects:", font=('Arial', 10, 'bold')).pack(side='left', padx=(0, 10))
+        
+        self.search_var = tk.StringVar()
+        self.search_var.trace('w', self.on_search_change)
+        self.search_entry = ttk.Entry(
+            search_row,
+            textvariable=self.search_var,
+            width=30,
+            font=('Arial', 10)
+        )
+        self.search_entry.pack(side='left', padx=(0, 10))
+        
+        # Add search help label
+        help_label = ttk.Label(
+            search_row,
+            text="💡",
+            font=('Arial', 12)
+        )
+        help_label.pack(side='left', padx=(0, 5))
+        
+        # Create tooltip for search help
+        def show_search_help(event):
+            help_text = """Smart Search Tips:
+• Exact matches: "M31", "Orion Nebula"
+• Partial matches: "neb" finds nebulae
+• Abbreviations: "m" finds Messier objects
+• Flexible: "m31" matches "M 031"
+• Typo-friendly: "gal" finds galaxies"""
+            
+            # Simple tooltip
+            tooltip = tk.Toplevel()
+            tooltip.wm_overrideredirect(True)
+            tooltip.configure(bg='lightyellow', bd=1, relief='solid')
+            
+            x = event.x_root + 10
+            y = event.y_root - 60
+            tooltip.geometry(f"+{x}+{y}")
+            
+            tk.Label(
+                tooltip,
+                text=help_text,
+                bg='lightyellow',
+                font=('Arial', 9),
+                justify='left',
+                padx=8,
+                pady=5
+            ).pack()
+            
+            # Auto-hide after 4 seconds
+            tooltip.after(4000, tooltip.destroy)
+        
+        help_label.bind('<Button-1>', show_search_help)
+        
+        # Clear search button
+        self.clear_search_btn = ttk.Button(
+            search_row,
+            text="Clear Search",
+            command=self.clear_search,
+            width=12
+        )
+        self.clear_search_btn.pack(side='left', padx=(0, 20))
+        
+        # Astrobin filter checkbox
+        self.astrobin_filter_var = tk.BooleanVar()
+        self.astrobin_filter_check = ttk.Checkbutton(
+            search_row,
+            text="Show only objects with Astrobin images",
+            variable=self.astrobin_filter_var,
+            command=self.on_filter_change
+        )
+        self.astrobin_filter_check.pack(side='left', padx=(0, 20))
+        
+        # Status label
+        self.filter_status_label = ttk.Label(
+            search_row,
+            text="All objects shown",
+            font=('Arial', 9, 'italic'),
+            foreground='gray'
+        )
+        self.filter_status_label.pack(side='right', padx=(10, 0))
+        
+        # Second row: Quick filter buttons
+        buttons_row = ttk.Frame(controls_frame)
+        buttons_row.pack(fill='x')
+        
+        ttk.Label(buttons_row, text="Quick Filters:", font=('Arial', 10, 'bold')).pack(side='left', padx=(0, 10))
+        
+        # Quick search buttons for common object types
+        quick_searches = [
+            ("Messier", "M "),
+            ("NGC", "NGC"),
+            ("IC", "IC"),
+            ("Barnard", "Barnard"),
+            ("Abell", "Abell")
+        ]
+        
+        for label, search_term in quick_searches:
+            btn = ttk.Button(
+                buttons_row,
+                text=label,
+                command=lambda term=search_term: self.quick_search(term),
+                width=10
+            )
+            btn.pack(side='left', padx=2)
+        
+        # Clear all button
+        ttk.Button(
+            buttons_row,
+            text="Clear All Filters",
+            command=self.clear_all_filters,
+            width=15
+        ).pack(side='right', padx=(20, 0))
+    
     def create_enhanced_treeview(self):
         """Create comprehensive treeview with all specified columns."""
-        # Create frame for treeview and scrollbars
+        # Create frame for treeview and scrollbars (below the filtering controls)
         tree_frame = ttk.Frame(self.main_frame)
-        tree_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        tree_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=(0, 5))
         
         # Extract column identifiers and display names
         column_ids = [col[0] for col in self.all_columns]
@@ -251,8 +490,8 @@ class EnhancedTargetSelectionGUI:
         self.tree.bind('<Double-1>', self.on_object_double_click)
         self.tree.bind('<Button-3>', self.show_context_menu)
         
-        # Create tooltip for object information
-        self.tooltip = ObjectTooltip(self.tree)
+        # Create Astrobin tooltip for object images
+        self.tooltip = AstrobinTooltip(self.tree)
         self.tree.bind('<Motion>', self.on_tree_motion)
         self.tree.bind('<Leave>', self.on_tree_leave)
         
@@ -297,6 +536,7 @@ class EnhancedTargetSelectionGUI:
                     [Unnamed: 14] as dec_degrees,
                     [Unnamed: 15] as constellation,
                     [Unnamed: 16] as nick,
+                    [Quick Start Guide] as notes,
                     [Unnamed: 19] as magnitude,
                     [Unnamed: 34] as ngc_designation,
                     [Unnamed: 35] as ic_designation,
@@ -318,9 +558,13 @@ class EnhancedTargetSelectionGUI:
             # Add calculated columns
             self.calculate_real_time_data()
             
-            # Apply default filters and update display
-            self.filtered_objects = self.all_objects.copy()
-            self.update_display()
+            # Apply filters and update display
+            if hasattr(self, 'search_var') and self.search_var:
+                self.apply_filters()
+            else:
+                # Fallback for initial load before search controls are created
+                self.filtered_objects = self.all_objects.copy()
+                self.update_display()
             
             self.logger.info(f"Loaded {len(self.all_objects)} objects")
             
@@ -412,6 +656,269 @@ class EnhancedTargetSelectionGUI:
             
         except (ValueError, TypeError):
             return False
+    
+    # Search and Filter Methods
+    def _apply_fuzzy_search(self, dataframe, search_term):
+        """Apply fuzzy search with multiple matching strategies."""
+        import re
+        
+        # Convert search term to lowercase for case-insensitive matching
+        search_lower = search_term.lower()
+        
+        # Create different matching strategies
+        matches = []
+        
+        # Strategy 1: Exact substring match (highest priority)
+        exact_mask = (
+            dataframe['object_name'].str.contains(search_term, case=False, na=False) |
+            dataframe['object_type'].str.contains(search_term, case=False, na=False) |
+            dataframe['constellation'].str.contains(search_term, case=False, na=False) |
+            dataframe['messier_designation'].str.contains(search_term, case=False, na=False) |
+            dataframe['ngc_designation'].str.contains(search_term, case=False, na=False) |
+            dataframe['ic_designation'].str.contains(search_term, case=False, na=False) |
+            dataframe['nick'].str.contains(search_term, case=False, na=False)
+        )
+        exact_matches = dataframe[exact_mask].copy()
+        exact_matches['match_score'] = 100
+        matches.append(exact_matches)
+        
+        # Strategy 2: Flexible catalog number matching (e.g., "m31" matches "M 031", "M31", "M 31")
+        catalog_mask = pd.Series(False, index=dataframe.index)
+        
+        # Handle catalog patterns like M31, NGC123, IC456
+        catalog_pattern = re.match(r'^([a-z]+)\s*(\d+)$', search_lower.strip())
+        if catalog_pattern:
+            prefix = catalog_pattern.group(1)
+            number = catalog_pattern.group(2)
+            
+            # Create different number formats (with/without leading zeros, with/without spaces)
+            number_int = int(number)  # Remove leading zeros
+            number_padded = f"{number_int:03d}"  # Add leading zeros to make 3 digits
+            
+            # Create search patterns
+            patterns = [
+                f"{prefix}\\s*0*{number_int}\\b",      # M31, M 31, M031
+                f"{prefix}\\s+0*{number_int}\\b",      # M 31 (with space)
+                f"{prefix}\\s*{number_padded}\\b",     # M031
+                f"{prefix}\\s+{number_padded}\\b"      # M 031 (with space)
+            ]
+            
+            for pattern in patterns:
+                catalog_mask |= (
+                    dataframe['object_name'].str.contains(pattern, case=False, na=False, regex=True) |
+                    dataframe['messier_designation'].str.contains(pattern, case=False, na=False, regex=True) |
+                    dataframe['ngc_designation'].str.contains(pattern, case=False, na=False, regex=True) |
+                    dataframe['ic_designation'].str.contains(pattern, case=False, na=False, regex=True)
+                )
+        else:
+            # Fallback: Remove spaces and special characters for flexible matching
+            clean_search = re.sub(r'[^\w]', '', search_lower)
+            if len(clean_search) >= 2:
+                def matches_cleaned(text):
+                    if pd.isna(text):
+                        return False
+                    clean_text = re.sub(r'[^\w]', '', str(text).lower())
+                    return clean_search in clean_text
+                
+                catalog_mask = (
+                    dataframe['object_name'].apply(matches_cleaned) |
+                    dataframe['messier_designation'].apply(matches_cleaned) |
+                    dataframe['ngc_designation'].apply(matches_cleaned) |
+                    dataframe['ic_designation'].apply(matches_cleaned)
+                )
+        
+        # Exclude already found exact matches
+        catalog_mask &= ~exact_mask
+        if catalog_mask.any():
+            catalog_matches = dataframe[catalog_mask].copy()
+            catalog_matches['match_score'] = 80
+            matches.append(catalog_matches)
+        
+        # Strategy 3: Partial word matching (e.g., "neb" matches "Nebula")
+        if len(search_lower) >= 3:
+            partial_words = search_lower.split()
+            partial_mask = pd.Series(False, index=dataframe.index)
+            
+            for word in partial_words:
+                if len(word) >= 3:
+                    partial_mask |= (
+                        dataframe['object_name'].str.contains(word, case=False, na=False) |
+                        dataframe['object_type'].str.contains(word, case=False, na=False) |
+                        dataframe['constellation'].str.contains(word, case=False, na=False)
+                    )
+            
+            partial_mask &= ~exact_mask & ~(catalog_mask if catalog_mask.any() else False)
+            partial_matches = dataframe[partial_mask].copy()
+            partial_matches['match_score'] = 60
+            matches.append(partial_matches)
+        
+        # Strategy 4: Number format matching (e.g., "31" matches "M031", "M 031", "NGC31")
+        number_mask = pd.Series(False, index=dataframe.index)
+        if re.match(r'^\d+$', search_term.strip()):
+            number = search_term.strip()
+            number_int = int(number)
+            number_padded = f"{number_int:03d}"
+            
+            # Match various number formats in catalogs
+            number_patterns = [
+                f"\\b0*{number_int}\\b",     # Match the number with optional leading zeros
+                f"\\b{number_padded}\\b",    # Match padded version
+                f"\\s{number_int}\\b",       # Match after space
+                f"\\s{number_padded}\\b"     # Match padded after space
+            ]
+            
+            for pattern in number_patterns:
+                number_mask |= (
+                    dataframe['object_name'].str.contains(pattern, case=False, na=False, regex=True) |
+                    dataframe['messier_designation'].str.contains(pattern, case=False, na=False, regex=True) |
+                    dataframe['ngc_designation'].str.contains(pattern, case=False, na=False, regex=True) |
+                    dataframe['ic_designation'].str.contains(pattern, case=False, na=False, regex=True)
+                )
+            
+            # Exclude previous matches
+            previous_masks_so_far = exact_mask
+            if catalog_mask.any():
+                previous_masks_so_far |= catalog_mask
+            if 'partial_mask' in locals():
+                previous_masks_so_far |= partial_mask
+                
+            number_mask &= ~previous_masks_so_far
+            if number_mask.any():
+                number_matches = dataframe[number_mask].copy()
+                number_matches['match_score'] = 70
+                matches.append(number_matches)
+        
+        # Strategy 5: Fuzzy matching for common typos and abbreviations
+        fuzzy_patterns = {
+            'messier': ['m', 'mes', 'mess'],
+            'ngc': ['new general', 'general'],  
+            'nebula': ['neb', 'nebu'],
+            'galaxy': ['gal', 'gxy'],
+            'cluster': ['cl', 'clus'],
+            'planetary': ['plan', 'pn'],
+            'andromeda': ['and', 'andro', 'm31'],
+            'orion': ['ori'],
+            'cygnus': ['cyg', 'swan'],
+            'cassiopeia': ['cas', 'cass'],
+            'veil': ['vel', 'ngc6960'],
+            'rosette': ['rose', 'ngc2237'],
+            'horsehead': ['horse', 'b33'],
+            'eagle': ['eag', 'm16'],
+            'ring': ['m57', 'lyra'],
+            'crab': ['m1', 'taurus']
+        }
+        
+        fuzzy_mask = pd.Series(False, index=dataframe.index)
+        for full_word, abbreviations in fuzzy_patterns.items():
+            if search_lower in abbreviations or any(abbr in search_lower for abbr in abbreviations):
+                fuzzy_mask |= (
+                    dataframe['object_name'].str.contains(full_word, case=False, na=False) |
+                    dataframe['object_type'].str.contains(full_word, case=False, na=False) |
+                    dataframe['constellation'].str.contains(full_word, case=False, na=False)
+                )
+            elif full_word in search_lower:
+                for abbr in abbreviations:
+                    fuzzy_mask |= (
+                        dataframe['object_name'].str.contains(abbr, case=False, na=False) |
+                        dataframe['messier_designation'].str.contains(abbr, case=False, na=False)
+                    )
+        
+        # Exclude already found matches
+        previous_masks = exact_mask
+        if catalog_mask.any():
+            previous_masks |= catalog_mask
+        if 'partial_mask' in locals():
+            previous_masks |= partial_mask
+        if 'number_mask' in locals() and number_mask.any():
+            previous_masks |= number_mask
+        
+        fuzzy_mask &= ~previous_masks
+        if fuzzy_mask.any():
+            fuzzy_matches = dataframe[fuzzy_mask].copy()
+            fuzzy_matches['match_score'] = 40
+            matches.append(fuzzy_matches)
+        
+        # Combine all matches and sort by score
+        if matches:
+            result = pd.concat(matches, ignore_index=True)
+            result = result.sort_values(['match_score', 'object_name'], ascending=[False, True])
+            result = result.drop('match_score', axis=1)
+            return result
+        else:
+            # No matches found, return empty dataframe with same structure
+            return dataframe.iloc[0:0].copy()
+    
+    def on_search_change(self, *args):
+        """Handle search box changes."""
+        self.apply_filters()
+    
+    def on_filter_change(self):
+        """Handle filter checkbox changes."""
+        self.apply_filters()
+    
+    def apply_filters(self):
+        """Apply search and filter criteria to the object list."""
+        try:
+            # Start with all objects
+            filtered = self.all_objects.copy()
+            
+            # Apply search filter with fuzzy matching
+            search_term = self.search_var.get().strip()
+            if search_term:
+                filtered = self._apply_fuzzy_search(filtered, search_term)
+            
+            # Apply Astrobin filter
+            if self.astrobin_filter_var.get():
+                # Filter to show only objects with valid Astrobin IDs
+                astrobin_mask = (
+                    pd.notna(filtered['astrobin_id']) & 
+                    (filtered['astrobin_id'] != '') &
+                    (filtered['astrobin_id'] != 0)
+                )
+                filtered = filtered[astrobin_mask]
+            
+            self.filtered_objects = filtered
+            self.update_display()
+            
+            # Update status
+            total_count = len(self.all_objects)
+            filtered_count = len(filtered)
+            if search_term or self.astrobin_filter_var.get():
+                status = f"Found {filtered_count} of {total_count} objects"
+                if search_term:
+                    if filtered_count > 0:
+                        status += f" matching '{search_term}'"
+                    else:
+                        status = f"No matches found for '{search_term}'. Try partial words or abbreviations."
+                if self.astrobin_filter_var.get():
+                    status += " (with Astrobin images)"
+            else:
+                status = f"Showing all {total_count} objects"
+            
+            # Update status in the filter panel
+            if hasattr(self, 'filter_status_label') and self.filter_status_label:
+                self.filter_status_label.config(text=status)
+            
+            # Update main status if we have a status callback
+            if hasattr(self, 'update_status_callback') and self.update_status_callback:
+                self.update_status_callback(status)
+            
+        except Exception as e:
+            self.logger.error(f"Error applying filters: {e}")
+    
+    def clear_search(self):
+        """Clear the search box."""
+        self.search_var.set("")
+    
+    def clear_all_filters(self):
+        """Clear all search and filter settings."""
+        self.search_var.set("")
+        self.astrobin_filter_var.set(False)
+        self.apply_filters()
+    
+    def quick_search(self, search_term):
+        """Set search to a predefined term."""
+        self.search_var.set(search_term)
     
     def update_display(self):
         """Update the treeview display with current filtered data."""
@@ -727,8 +1234,11 @@ class EnhancedTargetSelectionGUI:
             if obj.get('description'):
                 details_text += f"Description:\n{obj.get('description', '')}\n\n"
             
-            if obj.get('nick'):
-                details_text += f"Nick:\n{obj.get('nick', '')}\n"
+            if obj.get('nick') and pd.notna(obj.get('nick')) and str(obj.get('nick')).strip():
+                details_text += f"Nickname:\n\"{obj.get('nick', '')}\"\n\n"
+            
+            if obj.get('notes') and pd.notna(obj.get('notes')) and str(obj.get('notes')).strip():
+                details_text += f"Notes:\n{obj.get('notes', '')}\n"
             
             text_widget.insert(tk.END, details_text)
             text_widget.config(state=tk.DISABLED)
@@ -808,9 +1318,12 @@ class EnhancedTargetSelectionGUI:
                         # Get object data for tooltip
                         object_data = obj_match.iloc[0].to_dict()
                         
+                        # Debug logging
+                        self.logger.debug(f"Hovering over {object_name}, Astrobin ID: {object_data.get('astrobin_id')}")
+                        
                         # Schedule tooltip with delay to prevent flickering
                         self.tooltip_delay_timer = self.main_frame.after(
-                            300,  # 300ms delay (reduced for better responsiveness)
+                            500,  # Increased delay for debugging
                             lambda odata=object_data, oname=object_name, ev=event: self.tooltip.show_tooltip(ev, odata, oname)
                         )
                     else:
