@@ -217,33 +217,160 @@ class AstronomicalCalculator:
             self.logger.error(f"Error calculating moon phase: {e}")
             return 0.0
     
+    def calculate_sun_times(self, latitude: float, longitude: float, target_date: date) -> Dict[str, datetime]:
+        """
+        Calculate sunrise, sunset, and twilight times for given location and date.
+        Returns: dictionary with sunrise, sunset, nautical_dawn, nautical_dusk times
+        """
+        try:
+            results = {}
+            
+            # Calculate for different sun altitudes
+            # 0° = geometric horizon (sunrise/sunset)
+            # -12° = nautical twilight
+            sun_angles = {
+                'sunrise': 0.0,
+                'sunset': 0.0,
+                'nautical_dawn': -12.0,
+                'nautical_dusk': -12.0
+            }
+            
+            for event_name, target_altitude in sun_angles.items():
+                # Determine if we're looking for morning or evening event
+                if 'sunrise' in event_name or 'dawn' in event_name:
+                    # Morning events - start search at 4 AM
+                    start_hour = 4
+                    search_forward = True
+                else:
+                    # Evening events - start search at 6 PM  
+                    start_hour = 18
+                    search_forward = True
+                
+                dt = datetime.combine(target_date, datetime.min.time().replace(hour=start_hour))
+                
+                # Binary search for the exact time
+                best_time = dt
+                best_diff = float('inf')
+                
+                # Coarse search - check every 15 minutes for 8 hours
+                for minutes in range(0, 8*60, 15):
+                    test_time = dt + timedelta(minutes=minutes)
+                    altitude, _ = self.calculate_sun_position(test_time, latitude, longitude)
+                    diff = abs(altitude - target_altitude)
+                    
+                    if diff < best_diff:
+                        best_diff = diff
+                        best_time = test_time
+                
+                # Fine search - check every minute around the best time
+                for minutes in range(-30, 31):
+                    test_time = best_time + timedelta(minutes=minutes)
+                    altitude, _ = self.calculate_sun_position(test_time, latitude, longitude)
+                    diff = abs(altitude - target_altitude)
+                    
+                    if diff < best_diff:
+                        best_diff = diff
+                        best_time = test_time
+                
+                results[event_name] = best_time
+            
+            return results
+            
+        except Exception as e:
+            self.logger.error(f"Error calculating sun times: {e}")
+            # Return default times
+            base_time = datetime.combine(target_date, datetime.min.time())
+            return {
+                'sunrise': base_time.replace(hour=6),
+                'sunset': base_time.replace(hour=18),
+                'nautical_dawn': base_time.replace(hour=5),
+                'nautical_dusk': base_time.replace(hour=19)
+            }
+    
     def calculate_sunset(self, latitude: float, longitude: float, target_date: date) -> datetime:
         """
         Calculate sunset time for given location and date.
         Returns: datetime object for sunset
         """
         try:
-            # Start with approximate sunset time (6 PM)
-            dt = datetime.combine(target_date, datetime.min.time().replace(hour=18))
-            
-            # Iterate to find when sun altitude crosses horizon
-            for iteration in range(10):  # Limit iterations
-                altitude, _ = self.calculate_sun_position(dt, latitude, longitude)
-                
-                if abs(altitude) < 0.1:  # Close enough to horizon
-                    break
-                    
-                # Adjust time based on altitude
-                if altitude > 0:
-                    dt += timedelta(minutes=30)
-                else:
-                    dt -= timedelta(minutes=30)
-            
-            return dt
-            
+            sun_times = self.calculate_sun_times(latitude, longitude, target_date)
+            return sun_times['sunset']
         except Exception as e:
             self.logger.error(f"Error calculating sunset: {e}")
             return datetime.combine(target_date, datetime.min.time().replace(hour=18))
+    
+    def calculate_moon_times(self, latitude: float, longitude: float, target_date: date) -> Dict[str, datetime]:
+        """
+        Calculate moonrise and moonset times for given location and date.
+        Returns: dictionary with moonrise and moonset times
+        """
+        try:
+            results = {}
+            
+            # Search for moonrise and moonset
+            base_time = datetime.combine(target_date, datetime.min.time())
+            
+            for event_name in ['moonrise', 'moonset']:
+                # Moonrise typically occurs during day, moonset during night
+                if event_name == 'moonrise':
+                    start_hour = 0  # Start at midnight
+                else:
+                    start_hour = 12  # Start at noon
+                
+                dt = base_time.replace(hour=start_hour)
+                
+                best_time = dt
+                best_diff = float('inf')
+                
+                # Search over 24 hours with 30-minute intervals
+                for minutes in range(0, 24*60, 30):
+                    test_time = dt + timedelta(minutes=minutes)
+                    altitude, _ = self.calculate_moon_position(test_time, latitude, longitude)
+                    
+                    # Look for when moon crosses horizon (0° altitude)
+                    diff = abs(altitude - 0.0)
+                    
+                    # For moonrise, we want the time when altitude is increasing through 0°
+                    # For moonset, we want the time when altitude is decreasing through 0°
+                    if diff < best_diff:
+                        # Check if this is the right crossing direction
+                        prev_time = test_time - timedelta(minutes=15)
+                        next_time = test_time + timedelta(minutes=15)
+                        
+                        prev_alt, _ = self.calculate_moon_position(prev_time, latitude, longitude)
+                        next_alt, _ = self.calculate_moon_position(next_time, latitude, longitude)
+                        
+                        if event_name == 'moonrise' and next_alt > prev_alt:
+                            # Rising through horizon
+                            best_diff = diff
+                            best_time = test_time
+                        elif event_name == 'moonset' and next_alt < prev_alt:
+                            # Setting through horizon
+                            best_diff = diff
+                            best_time = test_time
+                
+                # Fine-tune with 1-minute precision
+                for minutes in range(-15, 16):
+                    test_time = best_time + timedelta(minutes=minutes)
+                    altitude, _ = self.calculate_moon_position(test_time, latitude, longitude)
+                    diff = abs(altitude - 0.0)
+                    
+                    if diff < best_diff:
+                        best_diff = diff
+                        best_time = test_time
+                
+                results[event_name] = best_time
+            
+            return results
+            
+        except Exception as e:
+            self.logger.error(f"Error calculating moon times: {e}")
+            # Return default times
+            base_time = datetime.combine(target_date, datetime.min.time())
+            return {
+                'moonrise': base_time.replace(hour=20),
+                'moonset': base_time.replace(hour=8)
+            }
     
     def calculate_altitude_azimuth(self, ra_hours: float, dec_degrees: float, 
                                  dt: datetime, latitude: float, longitude: float) -> Tuple[float, float]:

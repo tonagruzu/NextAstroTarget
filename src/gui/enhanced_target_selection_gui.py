@@ -11,6 +11,10 @@ import pandas as pd
 import logging
 from typing import List, Dict, Any, Optional, Tuple
 import threading
+import warnings
+
+# Suppress pandas FutureWarnings for cleaner user experience
+warnings.filterwarnings('ignore', category=FutureWarning, module='pandas')
 
 from src.database.database_manager import DatabaseManager
 from src.utils.astronomical_calculations import AstronomicalCalculator
@@ -217,18 +221,13 @@ class EnhancedTargetSelectionGUI:
         try:
             self.logger.info("Calculating real-time astronomical data")
             
-            # Initialize calculated columns
-            for col_id, _, _ in self.calculated_columns:
-                if col_id not in self.all_objects.columns:
-                    self.all_objects[col_id] = 0.0
-            
-            # Initialize columns with proper data types first
+            # Initialize calculated columns with proper data types
             for col_id, _, _ in self.calculated_columns:
                 if col_id not in self.all_objects.columns:
                     if col_id == 'transit_time':
                         self.all_objects[col_id] = pd.Series(['--:--'] * len(self.all_objects), dtype='object')
                     else:
-                        self.all_objects[col_id] = 0.0  # Float column
+                        self.all_objects[col_id] = pd.Series([0.0] * len(self.all_objects), dtype='float64')
             
             # Calculate data for each object
             for index, obj in self.all_objects.iterrows():
