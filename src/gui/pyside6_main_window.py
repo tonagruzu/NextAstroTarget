@@ -10,10 +10,11 @@ from PySide6.QtWidgets import (
     QMessageBox, QDockWidget, QLineEdit
 )
 from PySide6.QtCore import Qt, QTime, QTimer, Signal, Slot
-from PySide6.QtGui import QFont, QPalette, QColor, QIcon, QPainter, QBrush, QPen
+from PySide6.QtGui import QFont, QPalette, QColor, QIcon, QPainter, QBrush, QPen, QPixmap, QImage
 from datetime import datetime, timedelta
 import logging
 from typing import Optional, Dict, Any
+from pathlib import Path
 import configparser
 import os
 
@@ -25,33 +26,113 @@ from src.utils.location_service import LocationService
 
 
 class MoonPhaseWidget(QWidget):
-    """Custom widget to display moon phase graphic."""
+    """Custom widget to display real moon phase images."""
+    
+    # Class-level cache for moon images
+    _moon_cache = {}
     
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setMinimumSize(90, 120)
-        self.setMaximumSize(90, 120)
+        self.setMinimumSize(120, 150)
+        self.setMaximumSize(120, 150)
         self.phase_data = None
+        self.moon_pixmap = None
+        self.logger = logging.getLogger(__name__)
+        
+        # Ensure cache directory exists
+        self.cache_dir = Path('data/moon_cache')
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
         
     def set_phase_data(self, phase_data: Dict[str, Any]):
-        """Update moon phase data and trigger repaint."""
+        """Update moon phase data and load corresponding image."""
         self.phase_data = phase_data
+        if phase_data:
+            self._load_moon_image()
         self.update()
-        
-    def paintEvent(self, event):
-        """Draw moon phase graphic."""
-        if not self.phase_data:
-            return
+    
+    def _load_moon_image(self):
+        """Load real moon phase image based on lunar day with caching."""
+        try:
+            import requests
             
-        painter = QPainter(self)
+            # Calculate lunar day (0-29) from cycle position
+            cycle_position = self.phase_data.get('cycle_position', 0)
+            lunar_day = int(cycle_position * 29.53)  # Lunar month is ~29.53 days
+            
+            # Check memory cache first
+            if lunar_day in self._moon_cache:
+                self.moon_pixmap = self._moon_cache[lunar_day]
+                self.logger.debug(f"Loaded moon image for day {lunar_day} from memory cache")
+                return
+            
+            # Check disk cache
+            cache_file = self.cache_dir / f"moon_day_{lunar_day:02d}.jpg"
+            if cache_file.exists():
+                self.moon_pixmap = QPixmap(str(cache_file))
+                if not self.moon_pixmap.isNull():
+                    # Scale to larger size (110x110)
+                    self.moon_pixmap = self.moon_pixmap.scaled(
+                        110, 110,
+                        Qt.KeepAspectRatio,
+                        Qt.SmoothTransformation
+                    )
+                    self._moon_cache[lunar_day] = self.moon_pixmap
+                    self.logger.debug(f"Loaded moon image for day {lunar_day} from disk cache")
+                    return
+            
+            # NASA SVS moon phase images (frames 1-29, no frame 0)
+            base_url = "https://svs.gsfc.nasa.gov/vis/a000000/a004900/a004955/frames/730x730_1x1_30p/"
+            
+            # Map lunar day to image (1-29, handle day 0 as day 1)
+            image_num = max(1, lunar_day % 30)  # SVS has frames 1-29
+            image_url = f"{base_url}moon.{image_num:04d}.jpg"
+            
+            self.logger.debug(f"Downloading moon image for day {lunar_day}: {image_url}")
+            
+            # Try to load from URL with timeout
+            response = requests.get(image_url, timeout=5)
+            response.raise_for_status()
+            
+            # Load image from bytes
+            image = QImage()
+            if image.loadFromData(response.content):
+                # Save to disk cache
+                with open(cache_file, 'wb') as f:
+                    f.write(response.content)
+                
+                # Scale to larger size (110x110 to fit in 120x150 widget)
+                self.moon_pixmap = QPixmap.fromImage(image).scaled(
+                    110, 110, 
+                    Qt.KeepAspectRatio, 
+                    Qt.SmoothTransformation
+                )
+                
+                # Store in memory cache
+                self._moon_cache[lunar_day] = self.moon_pixmap
+                
+                self.logger.info(f"Downloaded and cached real moon phase image for lunar day {lunar_day}")
+            else:
+                self.logger.warning("Failed to load moon image data")
+                self._draw_fallback_graphic()
+                
+        except Exception as e:
+            self.logger.warning(f"Failed to load moon image: {e}, using fallback graphic")
+            self._draw_fallback_graphic()
+    
+    def _draw_fallback_graphic(self):
+        """Create fallback moon graphic if image loading fails."""
+        # Create a pixmap with drawn moon phase
+        pixmap = QPixmap(110, 110)
+        pixmap.fill(Qt.transparent)
+        
+        painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.Antialiasing)
         
-        # Canvas dimensions
-        margin = 5
-        size = 70
-        center_x = 45
-        center_y = 45
+        if not self.phase_data:
+            return
         
+        size = 100
+        margin = 5
         illumination = self.phase_data['illumination']
         cycle_position = self.phase_data['cycle_position']
         
@@ -69,56 +150,59 @@ class MoonPhaseWidget(QWidget):
         elif illumination > 99:  # Full Moon
             pass  # No shadow
         else:
-            # Partial phases
+            # Partial phases - simplified for fallback
             if cycle_position <= 0.5:
                 # Waxing phases
-                if cycle_position <= 0.25:  # New to First Quarter
-                    shadow_coverage = 1.0 - (cycle_position / 0.25)
-                    shadow_width = size * shadow_coverage
-                    if shadow_width > 0:
-                        painter.drawEllipse(margin, margin, int(shadow_width), size)
-                else:  # First Quarter to Full
-                    progress = (cycle_position - 0.25) / 0.25
-                    shadow_offset = (size / 2) * (1.0 - progress)
-                    if shadow_offset > 2:
-                        painter.drawEllipse(
-                            int(margin - shadow_offset), margin,
-                            int(shadow_offset * 2), size
-                        )
+                shadow_coverage = 1.0 - (cycle_position * 2)
+                shadow_width = size * shadow_coverage
+                if shadow_width > 0:
+                    painter.drawEllipse(margin, margin, int(shadow_width), size)
             else:
                 # Waning phases
-                if cycle_position <= 0.75:  # Full to Last Quarter
-                    progress = (cycle_position - 0.5) / 0.25
-                    shadow_offset = (size / 2) * progress
-                    if shadow_offset > 2:
-                        painter.drawEllipse(
-                            int(margin + size - shadow_offset), margin,
-                            int(shadow_offset * 2), size
-                        )
-                else:  # Last Quarter to New
-                    progress = (cycle_position - 0.75) / 0.25
-                    shadow_start = size * (1.0 - progress)
-                    painter.drawEllipse(
-                        int(margin + shadow_start), margin,
-                        int(size - shadow_start), size
-                    )
+                shadow_coverage = (cycle_position - 0.5) * 2
+                shadow_start = size * (1.0 - shadow_coverage)
+                painter.drawEllipse(
+                    int(margin + shadow_start), margin,
+                    int(size - shadow_start), size
+                )
         
-        # Draw outer circle for definition
+        # Draw outer circle
         painter.setBrush(Qt.NoBrush)
         painter.setPen(QPen(QColor("gray"), 2))
         painter.drawEllipse(margin, margin, size, size)
         
-        # Draw text
+        painter.end()
+        self.moon_pixmap = pixmap
+        
+    def paintEvent(self, event):
+        """Draw moon phase image or graphic."""
+        if not self.phase_data:
+            return
+            
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        
+        # Draw moon image if available - centered and moved up
+        if self.moon_pixmap:
+            # Center the image horizontally, start at y=2 (moved up from y=5)
+            x = (120 - self.moon_pixmap.width()) // 2
+            y = 2
+            painter.drawPixmap(x, y, self.moon_pixmap)
+        
+        # Draw text below image (moved up to ensure visibility)
+        y_offset = 115  # Moved up from 120 to prevent cutoff
         painter.setPen(QColor("white"))
-        font = QFont("Arial", 9, QFont.Bold)
+        font = QFont("Arial", 10, QFont.Bold)
         painter.setFont(font)
-        painter.drawText(0, margin + size + 10, 90, 20, Qt.AlignCenter, f"{illumination:.0f}%")
+        illumination = self.phase_data.get('illumination', 0)
+        painter.drawText(0, y_offset, 120, 20, Qt.AlignCenter, f"{illumination:.0f}%")
         
         font.setPointSize(8)
         font.setBold(False)
         painter.setFont(font)
         painter.setPen(QColor("gray"))
-        painter.drawText(0, margin + size + 25, 90, 20, Qt.AlignCenter, self.phase_data['phase_name'])
+        phase_name = self.phase_data.get('phase_name', '')
+        painter.drawText(0, y_offset + 13, 120, 20, Qt.AlignCenter, phase_name)
 
 
 class ModernMainWindow(QMainWindow):
