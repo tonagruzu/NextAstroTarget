@@ -625,45 +625,123 @@ class PySide6TargetSelectionGUI(QWidget):
         return None
     
     def _try_load_dss(self, ra_deg: float, dec_deg: float, object_name: str) -> QPixmap:
-        """Fallback: Load image from Digitized Sky Survey."""
+        """Fallback: Load color composite image from Digitized Sky Survey.
+        Combines Red, Blue, and IR filters to create an RGB color image.
+        """
         try:
-            # DSS2 Red survey with larger field of view for better context
-            # Using 15 arcmin field
-            dss_url = (
-                f"https://archive.stsci.edu/cgi-bin/dss_search"
-                f"?v=poss2ukstu_red&r={ra_deg:.6f}&d={dec_deg:.6f}"
-                f"&e=J2000&h=15.0&w=15.0&f=gif&c=none&fov=NONE&v3="
-            )
+            # DSS2 has multiple surveys we can combine for color
+            # R: poss2ukstu_red (Red filter)
+            # G: poss2ukstu_blue (Blue filter) 
+            # B: poss2ukstu_ir (Infrared, used as blue channel for deeper sky)
             
-            self.logger.info(f"Fetching DSS image (fallback) for {object_name}")
+            # Try to fetch and combine multiple filters for color
+            size = 15.0  # 15 arcmin field of view
+            
+            self.logger.info(f"Fetching DSS color composite for {object_name}")
             
             headers = {
                 'User-Agent': 'NextAstroTarget/2.0.0 (Astronomy Application; PySide6)',
                 'Accept': 'image/gif,image/*,*/*;q=0.8'
             }
             
-            response = requests.get(dss_url, headers=headers, timeout=8)
+            # Fetch Red channel (brightest, use for luminance)
+            red_url = (
+                f"https://archive.stsci.edu/cgi-bin/dss_search"
+                f"?v=poss2ukstu_red&r={ra_deg:.6f}&d={dec_deg:.6f}"
+                f"&e=J2000&h={size}&w={size}&f=gif&c=none&fov=NONE&v3="
+            )
             
-            if response.status_code == 200 and len(response.content) > 10000:
-                # Load and resize image
-                img = Image.open(BytesIO(response.content))
-                img.thumbnail((400, 400), Image.Resampling.LANCZOS)
+            red_response = requests.get(red_url, headers=headers, timeout=8)
+            
+            if red_response.status_code == 200 and len(red_response.content) > 10000:
+                red_img = Image.open(BytesIO(red_response.content)).convert('L')
+                
+                # Try to fetch Blue channel for color
+                blue_url = (
+                    f"https://archive.stsci.edu/cgi-bin/dss_search"
+                    f"?v=poss2ukstu_blue&r={ra_deg:.6f}&d={dec_deg:.6f}"
+                    f"&e=J2000&h={size}&w={size}&f=gif&c=none&fov=NONE&v3="
+                )
+                
+                try:
+                    blue_response = requests.get(blue_url, headers=headers, timeout=8)
+                    if blue_response.status_code == 200 and len(blue_response.content) > 10000:
+                        blue_img = Image.open(BytesIO(blue_response.content)).convert('L')
+                        
+                        # Create RGB composite
+                        # Resize to same dimensions if needed
+                        if red_img.size != blue_img.size:
+                            blue_img = blue_img.resize(red_img.size, Image.Resampling.LANCZOS)
+                        
+                        # Create color image: R=red, G=(red+blue)/2, B=blue
+                        # This creates a natural-looking color image
+                        red_array = np.array(red_img)
+                        blue_array = np.array(blue_img)
+                        green_array = ((red_array.astype(np.float32) + blue_array.astype(np.float32)) / 2).astype(np.uint8)
+                        
+                        # Stack into RGB
+                        rgb_array = np.stack([red_array, green_array, blue_array], axis=2)
+                        color_img = Image.fromarray(rgb_array, mode='RGB')
+                        
+                        self.logger.info(f"Created DSS RGB composite for {object_name}")
+                    else:
+                        # Blue channel failed, create pseudo-color from red
+                        color_img = self._create_pseudocolor(red_img)
+                        self.logger.info(f"Created DSS pseudo-color image for {object_name}")
+                        
+                except Exception as e:
+                    # Fallback to pseudo-color if blue channel fails
+                    self.logger.debug(f"Blue channel failed, using pseudo-color: {e}")
+                    color_img = self._create_pseudocolor(red_img)
+                
+                # Resize if needed
+                if color_img.size[0] > 400 or color_img.size[1] > 400:
+                    color_img.thumbnail((400, 400), Image.Resampling.LANCZOS)
                 
                 # Convert to QPixmap
                 img_bytes = BytesIO()
-                img.save(img_bytes, format='PNG')
+                color_img.save(img_bytes, format='PNG')
                 img_bytes.seek(0)
                 
                 pixmap = QPixmap()
                 pixmap.loadFromData(img_bytes.read())
                 
-                self.logger.info(f"Successfully loaded DSS image for {object_name}")
+                self.logger.info(f"Successfully loaded DSS color image for {object_name}")
                 return pixmap
                 
         except Exception as e:
             self.logger.debug(f"Failed to load DSS image: {e}")
             
         return None
+    
+    def _create_pseudocolor(self, grayscale_img: Image.Image) -> Image.Image:
+        """Create a pseudo-color image from grayscale using color mapping.
+        Maps grayscale to a blue-white-red color scheme typical of astronomy images.
+        """
+        # Convert to numpy array
+        gray_array = np.array(grayscale_img)
+        
+        # Normalize to 0-1
+        gray_norm = gray_array.astype(np.float32) / 255.0
+        
+        # Create color mapping (blue for dark, white for bright, slight red for very bright)
+        # R channel: gradual increase from 0 to 1
+        r = np.clip(gray_norm * 1.2, 0, 1)
+        
+        # G channel: peaks at mid-tones
+        g = np.clip(gray_norm * 1.1, 0, 1)
+        
+        # B channel: strong in dark areas, decreases with brightness
+        b = np.clip(0.3 + gray_norm * 0.9, 0, 1)
+        
+        # Stack and convert back to uint8
+        rgb_array = np.stack([
+            (r * 255).astype(np.uint8),
+            (g * 255).astype(np.uint8),
+            (b * 255).astype(np.uint8)
+        ], axis=2)
+        
+        return Image.fromarray(rgb_array, mode='RGB')
         
     def pixmap_to_base64(self, pixmap: QPixmap) -> str:
         """Convert QPixmap to base64 string."""
