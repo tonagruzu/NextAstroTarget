@@ -8,12 +8,22 @@
 
 ## 🌟 Features
 
-- **🗄️ Database Management**: Automatically imports and processes Excel-based astronomical catalogs
-- **🔍 Smart Target Search**: Advanced filtering by object type, magnitude, constellation, and coordinates  
-- **📊 Target Optimization**: Calculates visibility, altitude, and optimal observing times
-- **🎯 Random Discovery**: Discover new targets with the random selection feature
-- **📈 Progress Tracking**: Real-time feedback during database initialization
-- **🖥️ User-friendly GUI**: Clean, intuitive interface built with tkinter
+### Modern PySide6 Interface
+- **🎨 Dark Theme**: Professional Qt6-based dark interface
+- **� Sky Survey Images**: Color composite images from SDSS and DSS
+  - Sloan Digital Sky Survey (SDSS) for high-quality extragalactic objects
+  - Multi-filter DSS color composites (Red + Blue filters)
+  - Automatic fallback system for complete sky coverage
+- **🌤️ Weather Integration**: Real-time ClearOutside astronomical weather forecast
+- **☀️🌙 Astronomical Data**: Live sun/moon positions, rise/set times, and moon phases
+- **🔍 Fuzzy Search**: Intelligent search with catalog number matching (M31, NGC, IC)
+- **⚡ Enhanced Performance**: Optimized filtering and data processing
+
+### Core Features
+- **🗄️ Database Management**: 3000+ deep-sky objects from comprehensive catalogs
+- **🎯 Smart Filtering**: Filter by type, rating, size, transit time, and constellation
+- **� Object Details**: Detailed information with sky survey preview images
+- **🌍 Location Aware**: Configurable observatory location with timezone support
 - **📝 Comprehensive Logging**: Detailed application logs for troubleshooting
 - **⚙️ Modular Architecture**: Easily extensible for future enhancements
 
@@ -25,29 +35,36 @@
 - Windows 10 or Windows 11 (64-bit recommended)
 
 #### Software Requirements
-- Python 3.8 or higher
-- Minimum 4GB RAM
+- Python 3.9 or higher
+- Minimum 4GB RAM (8GB recommended)
 - 1GB free disk space
-- Internet connection for initial setup
+- Internet connection for sky survey images
 
 ### 📦 Installation
 
-#### Method 1: Automated Installation (Recommended)
+#### Method 1: Quick Start with Desktop Shortcut (Recommended)
 
-1. **Download the application**
-   - Extract all files to a directory (e.g., `C:\NextAstroTarget\`)
+1. **Clone or download the repository**
+   ```powershell
+   git clone https://github.com/tonagruzu/NextAstroTarget.git
+   cd NextAstroTarget
+   ```
 
-2. **Run the installer**
-   - Double-click `install.bat` in the application directory
-   - The installer will:
-     - Check Python installation
-     - Install required packages
-     - Create desktop shortcut
-     - Set up configuration files
+2. **Install dependencies**
+   ```powershell
+   pip install -r requirements.txt
+   ```
 
-3. **Launch the application**
-   - Use the desktop shortcut "NextAstroTarget"
-   - Or run `main.py` from the application directory
+3. **Create desktop shortcut**
+   ```powershell
+   python create_desktop_shortcut.py
+   ```
+   This will create a "NextAstroTarget" shortcut on your desktop with the application icon.
+
+4. **Launch the application**
+   - Double-click the desktop shortcut, or
+   - Run `python main_pyside6.py` from the application directory, or
+   - Double-click `NextAstroTarget.bat`
 
 #### Method 2: Manual Installation
 
@@ -59,14 +76,26 @@
 
 2. **Install Required Packages**
    ```powershell
-   cd C:\NextAstroTarget
-   pip install -r requirements.txt
+   pip install PySide6 pandas requests pillow numpy openpyxl
    ```
 
 3. **Run the Application**
    ```powershell
-   python main.py
+   python main_pyside6.py
    ```
+
+### 🖥️ Application Versions
+
+- **PySide6 Version** (main_pyside6.py) - **RECOMMENDED**
+  - Modern Qt6-based interface
+  - Dark theme support
+  - SDSS/DSS color sky survey images
+  - Enhanced weather forecast display
+  - Improved astronomical calculations
+  
+- **Legacy TKinter Version** (main.py)
+  - Classic interface
+  - Maintained for compatibility
 
 ### 🎯 First-Time Setup
 
