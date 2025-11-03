@@ -4,7 +4,8 @@ Modern PySide6 target selection GUI with professional table view.
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
-    QHeaderView, QPushButton, QLabel, QLineEdit, QMenu, QMessageBox, QToolTip
+    QHeaderView, QPushButton, QLabel, QLineEdit, QMenu, QMessageBox, QToolTip,
+    QDialog, QScrollArea
 )
 from PySide6.QtCore import Qt, Signal, Slot, QTimer, QPoint
 from PySide6.QtGui import QColor, QBrush, QFont, QAction, QPixmap, QCursor
@@ -589,7 +590,7 @@ class PySide6TargetSelectionGUI(QWidget):
         
     @Slot()
     def on_row_double_clicked(self):
-        """Handle row double-click."""
+        """Handle row double-click - show detail dialog with DSS image."""
         current_row = self.table.currentRow()
         if current_row >= 0:
             item = self.table.item(current_row, 0)
@@ -597,15 +598,92 @@ class PySide6TargetSelectionGUI(QWidget):
                 obj_data = item.data(Qt.UserRole)
                 if obj_data:
                     self.object_selected.emit(obj_data)
-                    QMessageBox.information(
-                        self,
-                        obj_data.get('object_name', 'Object'),
-                        f"Details for {obj_data.get('object_name')}\\n\\n"
-                        f"Type: {obj_data.get('object_type')}\\n"
-                        f"Constellation: {obj_data.get('constellation')}\\n"
-                        f"Size: {obj_data.get('size_arcmin')}'\\n"
-                        f"Rating: {obj_data.get('rating')} stars"
-                    )
+                    self.show_object_detail_dialog(obj_data)
+    
+    def show_object_detail_dialog(self, obj_data: Dict):
+        """Show detailed object information with DSS image preview."""
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"🌌 {obj_data.get('object_name', 'Object Details')}")
+        dialog.setMinimumSize(500, 600)
+        
+        layout = QVBoxLayout(dialog)
+        layout.setSpacing(10)
+        layout.setContentsMargins(15, 15, 15, 15)
+        
+        # Object name header
+        name_label = QLabel(f"<h2 style='color: #4A9EFF;'>{obj_data.get('object_name', 'Unknown')}</h2>")
+        layout.addWidget(name_label)
+        
+        # DSS Image
+        ra_deg = obj_data.get('ra_degrees')
+        dec_deg = obj_data.get('dec_degrees')
+        
+        if ra_deg is not None and dec_deg is not None:
+            try:
+                ra_float = float(ra_deg)
+                dec_float = float(dec_deg)
+                
+                # Show loading message
+                loading_label = QLabel("⏳ Loading DSS image...")
+                loading_label.setAlignment(Qt.AlignCenter)
+                loading_label.setStyleSheet("font-size: 12pt; padding: 20px;")
+                layout.addWidget(loading_label)
+                
+                # Load DSS image
+                pixmap = self.load_dss_image(ra_float, dec_float, obj_data.get('object_name', ''))
+                
+                if pixmap:
+                    # Replace loading message with image
+                    layout.removeWidget(loading_label)
+                    loading_label.deleteLater()
+                    
+                    image_label = QLabel()
+                    # Scale image to fit dialog while maintaining aspect ratio
+                    scaled_pixmap = pixmap.scaled(450, 450, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                    image_label.setPixmap(scaled_pixmap)
+                    image_label.setAlignment(Qt.AlignCenter)
+                    image_label.setStyleSheet("border: 2px solid #4A9EFF; background-color: #000;")
+                    layout.addWidget(image_label)
+                    
+                    caption = QLabel("🔭 Digitized Sky Survey (DSS)")
+                    caption.setAlignment(Qt.AlignCenter)
+                    caption.setStyleSheet("color: #808080; font-size: 9pt;")
+                    layout.addWidget(caption)
+                else:
+                    layout.removeWidget(loading_label)
+                    loading_label.deleteLater()
+                    
+                    no_image_label = QLabel("📷 DSS image not available")
+                    no_image_label.setAlignment(Qt.AlignCenter)
+                    no_image_label.setStyleSheet("font-size: 11pt; padding: 20px; color: #808080;")
+                    layout.addWidget(no_image_label)
+                    
+            except (ValueError, TypeError) as e:
+                self.logger.debug(f"Invalid coordinates: {e}")
+        
+        # Object details
+        details_text = f"""
+        <div style='font-size: 11pt; line-height: 1.6;'>
+            <p><b>Type:</b> {obj_data.get('object_type', 'Unknown')}</p>
+            <p><b>Constellation:</b> {obj_data.get('constellation', 'Unknown')}</p>
+            <p><b>Size:</b> {obj_data.get('size_arcmin', 'Unknown')}' arcminutes</p>
+            <p><b>Rating:</b> {'⭐' * int(float(str(obj_data.get('rating', '0')).split()[0]))} {obj_data.get('rating', 'Unknown')}</p>
+            <p><b>RA:</b> {ra_deg:.4f}° ({obj_data.get('ra_hms', 'Unknown')})</p>
+            <p><b>Dec:</b> {dec_deg:.4f}° ({obj_data.get('dec_dms', 'Unknown')})</p>
+        </div>
+        """
+        
+        details_label = QLabel(details_text)
+        details_label.setWordWrap(True)
+        layout.addWidget(details_label)
+        
+        # Close button
+        close_btn = QPushButton("Close")
+        close_btn.setFixedHeight(32)
+        close_btn.clicked.connect(dialog.accept)
+        layout.addWidget(close_btn)
+        
+        dialog.exec_()
                     
     @Slot(object)
     def show_context_menu(self, pos):

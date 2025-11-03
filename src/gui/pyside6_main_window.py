@@ -308,7 +308,8 @@ class ModernMainWindow(QMainWindow):
         
         # Apply button
         apply_btn = QPushButton("Apply Settings")
-        apply_btn.setFixedHeight(28)
+        apply_btn.setFixedHeight(30)
+        apply_btn.setMinimumWidth(120)
         apply_btn.clicked.connect(self.apply_location_settings)
         layout.addWidget(apply_btn, 1, 5)
         
@@ -328,7 +329,7 @@ class ModernMainWindow(QMainWindow):
         # Sun info - compact display
         self.sun_info_label = QLabel("Calculating sun data...")
         self.sun_info_label.setWordWrap(True)
-        self.sun_info_label.setStyleSheet("font-size: 10pt;")
+        self.sun_info_label.setStyleSheet("font-size: 13pt; font-weight: 500;")
         layout.addWidget(self.sun_info_label)
         
         # Moon info with phase graphic
@@ -337,7 +338,7 @@ class ModernMainWindow(QMainWindow):
         
         self.moon_info_label = QLabel("Calculating moon data...")
         self.moon_info_label.setWordWrap(True)
-        self.moon_info_label.setStyleSheet("font-size: 10pt;")
+        self.moon_info_label.setStyleSheet("font-size: 13pt; font-weight: 500;")
         moon_container.addWidget(self.moon_info_label, 1)
         
         # Add moon phase widget - smaller size
@@ -822,9 +823,15 @@ class ModernMainWindow(QMainWindow):
     @Slot()
     def clear_all_filters(self):
         """Clear all active filters."""
-        # Reset UI
+        # Reset UI - uncheck all buttons first
+        for btn in self.rating_buttons.values():
+            btn.setChecked(False)
         self.rating_buttons["All"].setChecked(True)
+        
+        for btn in self.type_buttons.values():
+            btn.setChecked(False)
         self.type_buttons["All"].setChecked(True)
+        
         self.size_min.setValue(0)
         self.size_max.setValue(9999)
         self.transit_start.setTime(QTime(0, 0))
