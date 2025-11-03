@@ -328,7 +328,7 @@ class ModernMainWindow(QMainWindow):
         # Sun info - compact display
         self.sun_info_label = QLabel("Calculating sun data...")
         self.sun_info_label.setWordWrap(True)
-        self.sun_info_label.setStyleSheet("font-size: 9pt;")
+        self.sun_info_label.setStyleSheet("font-size: 10pt;")
         layout.addWidget(self.sun_info_label)
         
         # Moon info with phase graphic
@@ -337,7 +337,7 @@ class ModernMainWindow(QMainWindow):
         
         self.moon_info_label = QLabel("Calculating moon data...")
         self.moon_info_label.setWordWrap(True)
-        self.moon_info_label.setStyleSheet("font-size: 9pt;")
+        self.moon_info_label.setStyleSheet("font-size: 10pt;")
         moon_container.addWidget(self.moon_info_label, 1)
         
         # Add moon phase widget - smaller size
@@ -394,7 +394,8 @@ class ModernMainWindow(QMainWindow):
         for rating in ["All", "3+", "4+", "5"]:
             btn = QPushButton(f"⭐ {rating}")
             btn.setCheckable(True)
-            btn.setFixedHeight(28)
+            btn.setFixedHeight(30)
+            btn.setMinimumWidth(70)
             btn.clicked.connect(lambda checked, r=rating: self.filter_by_rating(r))
             self.rating_buttons[rating] = btn
             rating_layout.addWidget(btn)
@@ -409,7 +410,8 @@ class ModernMainWindow(QMainWindow):
         for obj_type in ["All", "Galaxies", "Nebulae", "Clusters", "Others"]:
             btn = QPushButton(obj_type)
             btn.setCheckable(True)
-            btn.setFixedHeight(28)
+            btn.setFixedHeight(30)
+            btn.setMinimumWidth(75)
             btn.clicked.connect(lambda checked, t=obj_type: self.filter_by_type(t))
             self.type_buttons[obj_type] = btn
             type_layout.addWidget(btn)
@@ -457,6 +459,7 @@ class ModernMainWindow(QMainWindow):
         # Clear filters button
         clear_filters_btn = QPushButton("🔄 Clear All Filters")
         clear_filters_btn.setFixedHeight(32)
+        clear_filters_btn.setMinimumWidth(150)
         clear_filters_btn.clicked.connect(self.clear_all_filters)
         layout.addWidget(clear_filters_btn, row, 4, 1, 4)
         
