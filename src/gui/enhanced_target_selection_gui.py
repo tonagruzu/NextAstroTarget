@@ -1088,17 +1088,26 @@ class EnhancedTargetSelectionGUI:
                 
                 elif filter_name == 'type':
                     obj_type = filter_value
-                    type_map = {
-                        'Galaxies': ['Galaxy', 'Gx'],
-                        'Nebulae': ['Neb', 'HII', 'Emission'],
-                        'Clusters': ['Cluster', 'OC', 'GC'],
-                        'Planetary Nebulae': ['PN', 'Planetary']
-                    }
                     
-                    if obj_type in type_map:
-                        type_values = type_map[obj_type]
+                    if obj_type == 'Galaxies':
                         self.filtered_objects = self.filtered_objects[
-                            self.filtered_objects['object_type'].isin(type_values)
+                            self.filtered_objects['object_type'] == 'Gal'
+                        ]
+                    elif obj_type == 'Nebulae':
+                        # All nebulae except planetary nebulae
+                        self.filtered_objects = self.filtered_objects[
+                            (self.filtered_objects['object_type'].isin(['Neb', 'Neb '])) &
+                            (~self.filtered_objects['subtype'].isin(['PN', 'PPN']))
+                        ]
+                    elif obj_type == 'Clusters':
+                        self.filtered_objects = self.filtered_objects[
+                            self.filtered_objects['object_type'] == 'Stars'
+                        ]
+                    elif obj_type == 'Planetary Nebulae':
+                        # Planetary nebulae are nebulae with specific subtypes
+                        self.filtered_objects = self.filtered_objects[
+                            (self.filtered_objects['object_type'].isin(['Neb', 'Neb '])) &
+                            (self.filtered_objects['subtype'].isin(['PN', 'PPN']))
                         ]
             
             # Update display
