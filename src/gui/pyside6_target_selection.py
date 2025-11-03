@@ -17,6 +17,9 @@ from datetime import datetime
 import requests
 from PIL import Image
 from io import BytesIO
+import subprocess
+import shutil
+import os
 
 from src.database.database_manager import DatabaseManager
 from src.utils.astronomical_calculations import AstronomicalCalculator
@@ -916,14 +919,18 @@ class PySide6TargetSelectionGUI(QWidget):
                     rating_stars = ''
                     rating_value = 'Unknown'
                 
+                # Format coordinates same as in the table
+                ra_formatted = self.format_ra(ra_deg) if ra_deg is not None else 'Unknown'
+                dec_formatted = self.format_dec(dec_deg) if dec_deg is not None else 'Unknown'
+                
                 details_text = f"""
                 <div style='font-size: 11pt; line-height: 1.6;'>
                     <p><b>Type:</b> {obj_data.get('object_type', 'Unknown')}</p>
                     <p><b>Constellation:</b> {obj_data.get('constellation', 'Unknown')}</p>
                     <p><b>Size:</b> {obj_data.get('size_arcmin', 'Unknown')}' arcminutes</p>
                     <p><b>Rating:</b> {rating_stars} {rating_value}</p>
-                    <p><b>RA:</b> {ra_deg if ra_deg else 'Unknown'} ({obj_data.get('ra_hms', 'Unknown')})</p>
-                    <p><b>Dec:</b> {dec_deg if dec_deg else 'Unknown'} ({obj_data.get('dec_dms', 'Unknown')})</p>
+                    <p><b>RA:</b> {ra_formatted}</p>
+                    <p><b>Dec:</b> {dec_formatted}</p>
                 </div>
                 """
                 
@@ -933,12 +940,39 @@ class PySide6TargetSelectionGUI(QWidget):
             except Exception as e:
                 self.logger.error(f"Error formatting details: {e}")
             
+            # Buttons layout
+            buttons_layout = QHBoxLayout()
+            buttons_layout.addStretch()
+            
+            # Stellarium button (if coordinates available)
+            if ra_deg is not None and dec_deg is not None:
+                stellarium_btn = QPushButton("🔭 View in Stellarium")
+                stellarium_btn.setFixedHeight(32)
+                stellarium_btn.setMinimumWidth(150)
+                stellarium_btn.setStyleSheet("""
+                    QPushButton {
+                        background-color: #4A9EFF;
+                        color: white;
+                        font-weight: bold;
+                        border-radius: 4px;
+                    }
+                    QPushButton:hover {
+                        background-color: #5AAFFF;
+                    }
+                """)
+                stellarium_btn.clicked.connect(lambda: self.open_in_stellarium(
+                    ra_deg, dec_deg, obj_data.get('object_name', 'Object')
+                ))
+                buttons_layout.addWidget(stellarium_btn)
+            
             # Close button
             close_btn = QPushButton("Close")
             close_btn.setFixedHeight(32)
             close_btn.setMinimumWidth(100)
             close_btn.clicked.connect(dialog.accept)
-            layout.addWidget(close_btn)
+            buttons_layout.addWidget(close_btn)
+            
+            layout.addLayout(buttons_layout)
             
             self.logger.info("Showing detail dialog")
             dialog.exec_()
@@ -946,6 +980,70 @@ class PySide6TargetSelectionGUI(QWidget):
         except Exception as e:
             self.logger.error(f"Error showing detail dialog: {e}", exc_info=True)
             QMessageBox.warning(self, "Error", f"Could not show object details: {str(e)}")
+    
+    def open_in_stellarium(self, ra_deg, dec_deg, obj_name):
+        """Open Stellarium with the specified coordinates."""
+        try:
+            # Convert RA from degrees to hours for Stellarium
+            ra_hours = float(ra_deg) / 15.0
+            dec_float = float(dec_deg)
+            
+            # Common Stellarium executable locations
+            stellarium_paths = [
+                r"C:\Program Files\Stellarium\stellarium.exe",
+                r"C:\Program Files (x86)\Stellarium\stellarium.exe",
+                shutil.which("stellarium"),  # Check if in PATH
+            ]
+            
+            stellarium_exe = None
+            for path in stellarium_paths:
+                if path and os.path.exists(path):
+                    stellarium_exe = path
+                    break
+            
+            if not stellarium_exe:
+                self.logger.warning("Stellarium not found in standard locations")
+                QMessageBox.warning(
+                    self,
+                    "Stellarium Not Found",
+                    "Stellarium could not be found. Please ensure it is installed.\n\n"
+                    "Expected location: C:\\Program Files\\Stellarium\\stellarium.exe\n\n"
+                    "Download from: https://stellarium.org"
+                )
+                return
+            
+            # Create a temporary startup script for Stellarium
+            import tempfile
+            script_content = f"""
+// Startup script to center on object
+core.wait(2);
+core.moveToRaDec({ra_hours:.6f}, {dec_float:.6f});
+core.wait(0.5);
+StelMovementMgr.zoomTo(45, 1);
+"""
+            
+            # Create temp script file
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.ssc', delete=False) as f:
+                f.write(script_content)
+                script_path = f.name
+            
+            self.logger.info(f"Opening Stellarium for {obj_name} at RA={ra_hours:.2f}h, Dec={dec_float:.2f}°")
+            self.logger.debug(f"Created startup script: {script_path}")
+            
+            # Launch Stellarium with the startup script
+            command = [stellarium_exe, "--startup-script", script_path]
+            subprocess.Popen(command)
+            
+            # Note: We don't delete the temp file immediately as Stellarium needs time to read it
+            # It will be cleaned up by the OS eventually
+            
+        except Exception as e:
+            self.logger.error(f"Error opening Stellarium: {e}", exc_info=True)
+            QMessageBox.warning(
+                self,
+                "Error",
+                f"Could not launch Stellarium: {str(e)}"
+            )
                     
     @Slot(object)
     def show_context_menu(self, pos):
