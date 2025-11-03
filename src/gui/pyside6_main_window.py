@@ -329,13 +329,32 @@ class ModernMainWindow(QMainWindow):
         header_layout = QHBoxLayout(header_frame)
         header_layout.setContentsMargins(5, 5, 5, 5)
         
-        # App title with larger font
-        title_label = QLabel("🌌 NextAstroTarget")
-        title_font = QFont("Segoe UI", 24, QFont.Bold)
+        # App icon and title container
+        title_container = QWidget()
+        title_container_layout = QHBoxLayout(title_container)
+        title_container_layout.setContentsMargins(0, 0, 0, 0)
+        title_container_layout.setSpacing(15)
+        
+        # App icon
+        icon_label = QLabel()
+        icon_path = Path(__file__).parent.parent.parent / "assets" / "icon_64.png"
+        if icon_path.exists():
+            icon_pixmap = QPixmap(str(icon_path))
+            # Scale icon to balanced size (56x56)
+            scaled_icon = icon_pixmap.scaled(56, 56, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            icon_label.setPixmap(scaled_icon)
+        else:
+            self.logger.warning(f"App icon not found at {icon_path}")
+        title_container_layout.addWidget(icon_label)
+        
+        # App title with much larger font
+        title_label = QLabel("NextAstroTarget")
+        title_font = QFont("Segoe UI", 96, QFont.Bold)  # Doubled from 48pt to 96pt
         title_label.setFont(title_font)
         title_label.setStyleSheet("color: #4A9EFF;")
-        header_layout.addWidget(title_label)
+        title_container_layout.addWidget(title_label)
         
+        header_layout.addWidget(title_container)
         header_layout.addStretch()
         
         # Quick action buttons - reduced height

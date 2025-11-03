@@ -5,7 +5,7 @@ Modern PySide6 target selection GUI with professional table view.
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
     QHeaderView, QPushButton, QLabel, QLineEdit, QMenu, QMessageBox, QToolTip,
-    QDialog, QScrollArea
+    QDialog, QScrollArea, QGroupBox
 )
 from PySide6.QtCore import Qt, Signal, Slot, QTimer, QPoint
 from PySide6.QtGui import QColor, QBrush, QFont, QAction, QPixmap, QCursor
@@ -43,12 +43,12 @@ class PySide6TargetSelectionGUI(QWidget):
         # Image cache for tooltips
         self.image_cache = {}
         
-        # Tooltip state
-        self.tooltip_timer = QTimer()
-        self.tooltip_timer.setSingleShot(True)
-        self.tooltip_timer.timeout.connect(self.show_image_tooltip)
-        self.hover_row = -1
-        self.hover_data = None
+        # Tooltip state (disabled for performance - images load on double-click only)
+        # self.tooltip_timer = QTimer()
+        # self.tooltip_timer.setSingleShot(True)
+        # self.tooltip_timer.timeout.connect(self.show_image_tooltip)
+        # self.hover_row = -1
+        # self.hover_data = None
         
         self.setup_ui()
         self.load_objects()
@@ -122,9 +122,10 @@ class PySide6TargetSelectionGUI(QWidget):
         # Double-click to view details
         self.table.doubleClicked.connect(self.on_row_double_clicked)
         
-        # Hover for image preview
-        self.table.setMouseTracking(True)
-        self.table.cellEntered.connect(self.on_cell_hover)
+        # Disable hover image preview for better scrolling performance
+        # Images will only load on double-click
+        # self.table.setMouseTracking(True)
+        # self.table.cellEntered.connect(self.on_cell_hover)
         
     def apply_table_stylesheet(self):
         """Apply modern styling to table."""
@@ -876,6 +877,33 @@ class PySide6TargetSelectionGUI(QWidget):
                 no_coord_label.setAlignment(Qt.AlignCenter)
                 no_coord_label.setStyleSheet("font-size: 11pt; padding: 20px; color: #808080;")
                 layout.addWidget(no_coord_label)
+            
+            # Notes section (if available)
+            notes = obj_data.get('notes', '')
+            if notes and str(notes).strip() and str(notes).strip().lower() != 'nan':
+                notes_group = QGroupBox("📝 Notes")
+                notes_group.setStyleSheet("""
+                    QGroupBox {
+                        font-weight: bold;
+                        font-size: 11pt;
+                        color: #4A9EFF;
+                        border: 2px solid #3a3a3a;
+                        border-radius: 5px;
+                        margin-top: 10px;
+                        padding-top: 10px;
+                    }
+                    QGroupBox::title {
+                        subcontrol-origin: margin;
+                        left: 10px;
+                        padding: 0 5px 0 5px;
+                    }
+                """)
+                notes_layout = QVBoxLayout(notes_group)
+                notes_label = QLabel(str(notes))
+                notes_label.setWordWrap(True)
+                notes_label.setStyleSheet("color: #e0e0e0; font-size: 10pt; padding: 5px;")
+                notes_layout.addWidget(notes_label)
+                layout.addWidget(notes_group)
             
             # Object details
             try:
