@@ -112,6 +112,9 @@ class PySide6TargetSelectionGUI(QWidget):
         header.setStretchLastSection(True)
         header.setSectionResizeMode(0, QHeaderView.Stretch)  # Object name stretches
         
+        # Set specific column widths
+        self.table.setColumnWidth(8, 80)  # Rating column - wider to show 5 stars fully
+        
         # Context menu
         self.table.setContextMenuPolicy(Qt.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self.show_context_menu)
@@ -164,7 +167,7 @@ class PySide6TargetSelectionGUI(QWidget):
         self.table.setStyleSheet(stylesheet)
         
     def load_objects(self):
-        """Load objects from database."""
+        """Load objects from database with default size filter for performance."""
         try:
             self.logger.info("Loading objects from database")
             
@@ -195,14 +198,52 @@ class PySide6TargetSelectionGUI(QWidget):
             
             df = pd.read_sql_query(query, self.db_manager.get_connection())
             self.all_objects = df.to_dict('records')
-            self.filtered_objects = self.all_objects.copy()
             
-            self.logger.info(f"Loaded {len(self.all_objects)} objects")
+            # Apply default size filter from stored settings for performance
+            self.filtered_objects = self._apply_default_size_filter(self.all_objects.copy())
+            
+            self.logger.info(f"Loaded {len(self.all_objects)} objects, filtered to {len(self.filtered_objects)} by default size range")
             self.update_table_display()
             
         except Exception as e:
             self.logger.error(f"Failed to load objects: {e}")
             QMessageBox.critical(self, "Error", f"Failed to load objects: {str(e)}")
+    
+    def _apply_default_size_filter(self, objects):
+        """Apply default size filter from persistent settings."""
+        try:
+            # Get stored size range from database
+            size_min_str = self.db_manager.get_setting('size_min', '0')
+            size_max_str = self.db_manager.get_setting('size_max', '9999')
+            
+            size_min = int(size_min_str)
+            size_max = int(size_max_str)
+            
+            # Only filter if range is not the full range (0-9999)
+            if size_min > 0 or size_max < 9999:
+                filtered = []
+                for obj in objects:
+                    size_val = obj.get('size_arcmin')
+                    if size_val is not None:
+                        try:
+                            size_float = float(size_val)
+                            if size_min <= size_float <= size_max:
+                                filtered.append(obj)
+                        except (ValueError, TypeError):
+                            # Skip objects with invalid size values
+                            pass
+                    else:
+                        # Include objects without size data if min is 0
+                        if size_min == 0:
+                            filtered.append(obj)
+                self.logger.info(f"Default size filter ({size_min}'-{size_max}'): {len(objects)} -> {len(filtered)} objects")
+                return filtered
+            
+            return objects
+            
+        except Exception as e:
+            self.logger.warning(f"Failed to apply default size filter: {e}")
+            return objects
             
     def update_table_display(self):
         """Update table with current filtered objects."""
