@@ -60,10 +60,17 @@ class PySide6TargetSelectionGUI(QWidget):
         search_layout = QHBoxLayout()
         search_label = QLabel("🔍 Quick Search:")
         self.search_edit = QLineEdit()
-        self.search_edit.setPlaceholderText("Type object name...")
+        self.search_edit.setPlaceholderText("Type object name, catalog number (M31, NGC2244)...")
         self.search_edit.textChanged.connect(self.on_search_changed)
         search_layout.addWidget(search_label)
         search_layout.addWidget(self.search_edit)
+        
+        # Clear button
+        clear_search_btn = QPushButton("✖ Clear")
+        clear_search_btn.setMaximumWidth(80)
+        clear_search_btn.clicked.connect(self.clear_search)
+        search_layout.addWidget(clear_search_btn)
+        
         layout.addLayout(search_layout)
         
         # Object count label
@@ -314,18 +321,89 @@ class PySide6TargetSelectionGUI(QWidget):
             
     @Slot(str)
     def on_search_changed(self, text):
-        """Handle search text changes."""
+        """Handle search text changes with fuzzy matching."""
         if not text:
             self.filtered_objects = self.all_objects.copy()
         else:
-            text_lower = text.lower()
-            self.filtered_objects = [
-                obj for obj in self.all_objects
-                if text_lower in str(obj.get('object_name', '')).lower() or
-                   text_lower in str(obj.get('nick', '')).lower()
-            ]
+            self.filtered_objects = self._apply_fuzzy_search(text.strip())
             
         self.update_table_display()
+    
+    def clear_search(self):
+        """Clear search field."""
+        self.search_edit.clear()
+    
+    def _apply_fuzzy_search(self, search_term: str) -> List[Dict]:
+        """Apply fuzzy search with multiple matching strategies."""
+        import re
+        
+        search_lower = search_term.lower()
+        matches = []
+        seen_ids = set()
+        
+        # Strategy 1: Exact substring match in name, nickname, constellation
+        for obj in self.all_objects:
+            obj_id = id(obj)
+            if obj_id in seen_ids:
+                continue
+                
+            name = str(obj.get('object_name', '')).lower()
+            nick = str(obj.get('nick', '')).lower()
+            const = str(obj.get('constellation', '')).lower()
+            obj_type = str(obj.get('object_type', '')).lower()
+            
+            if (search_lower in name or search_lower in nick or 
+                search_lower in const or search_lower in obj_type):
+                matches.append(obj)
+                seen_ids.add(obj_id)
+        
+        # Strategy 2: Catalog number matching (M31, NGC123, IC456)
+        catalog_pattern = re.match(r'^([a-z]+)\s*(\d+)$', search_lower.strip())
+        if catalog_pattern:
+            prefix = catalog_pattern.group(1).upper()
+            number = catalog_pattern.group(2)
+            number_int = int(number)
+            
+            # Create search patterns
+            patterns = [
+                f"{prefix}\\s*0*{number_int}\\b",
+                f"{prefix}\\s+0*{number_int}\\b",
+            ]
+            
+            for obj in self.all_objects:
+                obj_id = id(obj)
+                if obj_id in seen_ids:
+                    continue
+                    
+                name = str(obj.get('object_name', ''))
+                
+                for pattern in patterns:
+                    if re.search(pattern, name, re.IGNORECASE):
+                        matches.append(obj)
+                        seen_ids.add(obj_id)
+                        break
+        
+        # Strategy 3: Partial word matching (for names like "Horsehead", "Orion")
+        if len(search_lower) >= 3 and not catalog_pattern:
+            for obj in self.all_objects:
+                obj_id = id(obj)
+                if obj_id in seen_ids:
+                    continue
+                    
+                name = str(obj.get('object_name', '')).lower()
+                nick = str(obj.get('nick', '')).lower()
+                
+                # Check if any word in name/nick starts with search term
+                name_words = name.split()
+                nick_words = nick.split()
+                
+                for word in name_words + nick_words:
+                    if word.startswith(search_lower):
+                        matches.append(obj)
+                        seen_ids.add(obj_id)
+                        break
+        
+        return matches
         
     @Slot(int, int)
     def on_cell_hover(self, row, column):
@@ -390,6 +468,68 @@ class PySide6TargetSelectionGUI(QWidget):
             
         except Exception as e:
             self.logger.error(f"Error showing tooltip: {e}")
+    
+    def _parse_rating(self, rating_value) -> float:
+        """Parse rating value which may be '5 - High', '5', or numeric."""
+        if not rating_value:
+            return 0.0
+        
+        try:
+            # Handle string ratings like "5 - High", "4 - Good", etc.
+            if isinstance(rating_value, str):
+                # Extract first numeric part before any space or dash
+                rating_str = str(rating_value).strip()
+                if ' ' in rating_str:
+                    rating_str = rating_str.split()[0]
+                return float(rating_str)
+            else:
+                return float(rating_value)
+        except (ValueError, AttributeError):
+            self.logger.warning(f"Could not parse rating: {rating_value}")
+            return 0.0
+    
+    def _is_transit_in_range(self, obj: Dict, start_time: str, end_time: str) -> bool:
+        """Check if object transits between the specified time range."""
+        try:
+            ra_deg = obj.get('ra_degrees')
+            if not ra_deg:
+                return False
+            
+            # Convert RA from degrees to hours
+            ra_hours = float(ra_deg) / 15.0
+            
+            # Calculate transit time
+            current_dt = datetime.now()
+            transit_time = self.astro_calc.calculate_transit_time(
+                ra_hours,
+                self.observatory['longitude'],
+                current_dt.date()
+            )
+            
+            if not transit_time:
+                return False
+            
+            # Get transit time as HH:MM
+            transit_str = transit_time.strftime("%H:%M")
+            
+            # Parse times to minutes
+            start_hour, start_min = map(int, start_time.split(':'))
+            end_hour, end_min = map(int, end_time.split(':'))
+            transit_hour, transit_min = map(int, transit_str.split(':'))
+            
+            start_minutes = start_hour * 60 + start_min
+            end_minutes = end_hour * 60 + end_min
+            transit_minutes = transit_hour * 60 + transit_min
+            
+            # Handle time range crossing midnight
+            if start_minutes > end_minutes:
+                return transit_minutes >= start_minutes or transit_minutes <= end_minutes
+            else:
+                return start_minutes <= transit_minutes <= end_minutes
+                
+        except Exception as e:
+            self.logger.debug(f"Error checking transit time for object: {e}")
+            return False
             
     def load_dss_image(self, ra_deg: float, dec_deg: float, object_name: str) -> QPixmap:
         """Load image from Digitized Sky Survey."""
@@ -492,28 +632,30 @@ class PySide6TargetSelectionGUI(QWidget):
         try:
             # Apply rating filter
             if filters.get('rating') and filters['rating'] != "All":
-                min_rating_str = filters['rating'].replace('+', '')
-                try:
-                    min_rating = float(min_rating_str)
-                    before_count = len(self.filtered_objects)
-                    self.filtered_objects = [
-                        obj for obj in self.filtered_objects
-                        if obj.get('rating') and float(obj['rating']) >= min_rating
-                    ]
-                    self.logger.info(f"Rating filter ({filters['rating']}): {before_count} → {len(self.filtered_objects)} objects")
-                except ValueError:
-                    self.logger.error(f"Invalid rating value: {filters['rating']}")
+                rating_str = filters['rating']
+                # Handle both "5+" and "5" formats
+                if '+' in rating_str:
+                    min_rating = float(rating_str.replace('+', ''))
+                else:
+                    min_rating = float(rating_str)
+                    
+                before_count = len(self.filtered_objects)
+                self.filtered_objects = [
+                    obj for obj in self.filtered_objects
+                    if obj.get('rating') and self._parse_rating(obj['rating']) >= min_rating
+                ]
+                self.logger.info(f"Rating filter ({rating_str}): {before_count} -> {len(self.filtered_objects)} objects")
                 
             # Apply type filter
             if filters.get('type') and filters['type'] != "All":
                 filter_type = filters['type']
                 before_count = len(self.filtered_objects)
                 
-                # Map filter names to database types
+                # Map filter names to database type abbreviations
                 type_mapping = {
-                    'Galaxies': ['galaxy', 'galaxies'],
-                    'Nebulae': ['nebula', 'nebulae', 'emission', 'reflection', 'planetary'],
-                    'Clusters': ['cluster', 'open cluster', 'globular cluster'],
+                    'Galaxies': ['gal', 'galaxy'],
+                    'Nebulae': ['neb', 'nebula', 'planetary', 'emission', 'reflection'],
+                    'Clusters': ['cluster', 'open', 'globular', 'cl'],
                     'Others': []  # Will be handled specially
                 }
                 
@@ -521,7 +663,7 @@ class PySide6TargetSelectionGUI(QWidget):
                     search_terms = type_mapping[filter_type]
                     if filter_type == 'Others':
                         # Others = anything not in the main categories
-                        excluded_terms = ['galaxy', 'nebula', 'cluster']
+                        excluded_terms = ['gal', 'neb', 'cluster', 'cl']
                         self.filtered_objects = [
                             obj for obj in self.filtered_objects
                             if not any(term in str(obj.get('object_type', '')).lower() 
@@ -533,7 +675,7 @@ class PySide6TargetSelectionGUI(QWidget):
                             if any(term in str(obj.get('object_type', '')).lower() 
                                   for term in search_terms)
                         ]
-                self.logger.info(f"Type filter ({filter_type}): {before_count} → {len(self.filtered_objects)} objects")
+                self.logger.info(f"Type filter ({filter_type}): {before_count} -> {len(self.filtered_objects)} objects")
                 
             # Apply size filter
             size_min = filters.get('size_min', 0)
@@ -545,15 +687,22 @@ class PySide6TargetSelectionGUI(QWidget):
                     if obj.get('size_arcmin') and 
                        size_min <= float(obj['size_arcmin']) <= size_max
                 ]
-                self.logger.info(f"Size filter ({size_min}'-{size_max}'): {before_count} → {len(self.filtered_objects)} objects")
+                self.logger.info(f"Size filter ({size_min}'-{size_max}'): {before_count} -> {len(self.filtered_objects)} objects")
                 
             # Apply transit time filter
             transit_start = filters.get('transit_start')
             transit_end = filters.get('transit_end')
             if transit_start and transit_end and (transit_start != "00:00" or transit_end != "23:59"):
                 before_count = len(self.filtered_objects)
-                # TODO: Implement transit time filtering
-                self.logger.info(f"Transit filter ({transit_start}-{transit_end}): {before_count} → {len(self.filtered_objects)} objects")
+                
+                # Filter objects by transit time
+                filtered_by_transit = []
+                for obj in self.filtered_objects:
+                    if self._is_transit_in_range(obj, transit_start, transit_end):
+                        filtered_by_transit.append(obj)
+                
+                self.filtered_objects = filtered_by_transit
+                self.logger.info(f"Transit filter ({transit_start}-{transit_end}): {before_count} -> {len(self.filtered_objects)} objects")
                 
         except Exception as e:
             self.logger.error(f"Error applying filters: {e}", exc_info=True)

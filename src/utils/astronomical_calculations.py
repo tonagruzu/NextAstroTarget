@@ -260,53 +260,78 @@ class AstronomicalCalculator:
             results = {}
             
             # Calculate for different sun altitudes
-            # 0° = geometric horizon (sunrise/sunset)
+            # -0.833° = geometric horizon accounting for sun's semidiameter and refraction (sunrise/sunset)
             # -12° = nautical twilight
             sun_angles = {
-                'sunrise': 0.0,
-                'sunset': 0.0,
+                'sunrise': -0.833,
+                'sunset': -0.833,
                 'nautical_dawn': -12.0,
                 'nautical_dusk': -12.0
             }
             
             for event_name, target_altitude in sun_angles.items():
                 # Determine if we're looking for morning or evening event
-                if 'sunrise' in event_name or 'dawn' in event_name:
-                    # Morning events - start search at 4 AM
-                    start_hour = 4
-                    search_forward = True
+                is_morning = 'sunrise' in event_name or 'dawn' in event_name
+                
+                if is_morning:
+                    # Morning events - search from midnight to noon
+                    start_hour = 0
+                    search_hours = 12
                 else:
-                    # Evening events - start search at 6 PM  
-                    start_hour = 18
-                    search_forward = True
+                    # Evening events - search from noon to midnight
+                    start_hour = 12
+                    search_hours = 12
                 
                 dt = datetime.combine(target_date, datetime.min.time().replace(hour=start_hour))
                 
-                # Binary search for the exact time
-                best_time = dt
+                # Find the crossing point where sun crosses target altitude
+                best_time = None
                 best_diff = float('inf')
+                prev_altitude = None
                 
-                # Coarse search - check every 15 minutes for 8 hours
-                for minutes in range(0, 8*60, 15):
+                # Coarse search - check every 10 minutes
+                for minutes in range(0, search_hours*60, 10):
                     test_time = dt + timedelta(minutes=minutes)
                     altitude, _ = self.calculate_sun_position(test_time, latitude, longitude)
-                    diff = abs(altitude - target_altitude)
                     
-                    if diff < best_diff:
-                        best_diff = diff
-                        best_time = test_time
+                    # For morning events: look for altitude going UP through target
+                    # For evening events: look for altitude going DOWN through target
+                    if prev_altitude is not None:
+                        if is_morning and prev_altitude < target_altitude <= altitude:
+                            # Found upward crossing - refine this region
+                            best_time = test_time - timedelta(minutes=5)
+                            break
+                        elif not is_morning and prev_altitude > target_altitude >= altitude:
+                            # Found downward crossing - refine this region
+                            best_time = test_time - timedelta(minutes=5)
+                            break
+                    
+                    prev_altitude = altitude
+                
+                # If no crossing found, fall back to minimum difference
+                if best_time is None:
+                    for minutes in range(0, search_hours*60, 10):
+                        test_time = dt + timedelta(minutes=minutes)
+                        altitude, _ = self.calculate_sun_position(test_time, latitude, longitude)
+                        diff = abs(altitude - target_altitude)
+                        
+                        if diff < best_diff:
+                            best_diff = diff
+                            best_time = test_time
                 
                 # Fine search - check every minute around the best time
-                for minutes in range(-30, 31):
+                final_time = best_time
+                best_diff = float('inf')
+                for minutes in range(-15, 16):
                     test_time = best_time + timedelta(minutes=minutes)
                     altitude, _ = self.calculate_sun_position(test_time, latitude, longitude)
                     diff = abs(altitude - target_altitude)
                     
                     if diff < best_diff:
                         best_diff = diff
-                        best_time = test_time
+                        final_time = test_time
                 
-                results[event_name] = best_time
+                results[event_name] = final_time
             
             return results
             

@@ -30,63 +30,56 @@ class PySide6WeatherWidget(QWidget):
     def setup_ui(self):
         """Create weather widget UI."""
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(10)
+        layout.setContentsMargins(5, 5, 5, 5)
+        layout.setSpacing(5)
         
         # Header with controls
         header_layout = QHBoxLayout()
         header_icon = QLabel("🌤️")
-        header_icon.setFont(QFont("Segoe UI Emoji", 16))
+        header_icon.setFont(QFont("Segoe UI Emoji", 12))
         header_label = QLabel("Weather Forecast")
-        header_label.setStyleSheet("color: #4A9EFF; font-weight: bold; font-size: 14px;")
+        header_label.setStyleSheet("color: #4A9EFF; font-weight: bold; font-size: 11px;")
         header_layout.addWidget(header_icon)
         header_layout.addWidget(header_label)
         header_layout.addStretch()
         
         # Refresh button
         self.refresh_button = QPushButton("↻")
-        self.refresh_button.setFixedSize(30, 30)
+        self.refresh_button.setFixedSize(26, 26)
         self.refresh_button.setToolTip("Refresh weather forecast")
         self.refresh_button.clicked.connect(self.refresh_forecast)
         header_layout.addWidget(self.refresh_button)
         
         # View on website button
         self.view_button = QPushButton("🔗")
-        self.view_button.setFixedSize(30, 30)
+        self.view_button.setFixedSize(26, 26)
         self.view_button.setToolTip("Open ClearOutside website")
         self.view_button.clicked.connect(self.open_clearoutside_website)
         header_layout.addWidget(self.view_button)
         
         layout.addLayout(header_layout)
         
-        # Location label
-        self.location_label = QLabel("Location: Not set")
-        self.location_label.setStyleSheet("color: #b0b0b0; font-size: 9pt;")
-        layout.addWidget(self.location_label)
-        
-        # Forecast image display
+        # Forecast image display - larger, minimal padding
         self.forecast_image_label = QLabel("Click ↻ to load forecast")
         self.forecast_image_label.setAlignment(Qt.AlignCenter)
-        self.forecast_image_label.setMinimumHeight(200)
+        self.forecast_image_label.setMinimumHeight(150)
         self.forecast_image_label.setWordWrap(True)
         self.forecast_image_label.setStyleSheet("""
             QLabel {
                 background-color: #2a2a2a;
                 border: 1px solid #3a3a3a;
                 border-radius: 4px;
-                padding: 10px;
+                padding: 2px;
                 color: #b0b0b0;
             }
         """)
         layout.addWidget(self.forecast_image_label)
         
-        # Status label
+        # Status label - very small
         self.status_label = QLabel("Ready")
-        self.status_label.setStyleSheet("color: #808080; font-size: 8pt;")
+        self.status_label.setStyleSheet("color: #808080; font-size: 7pt;")
         self.status_label.setWordWrap(True)
         layout.addWidget(self.status_label)
-        
-        layout.addStretch()
         
     def apply_stylesheet(self):
         """Apply modern styling."""
@@ -119,7 +112,6 @@ class PySide6WeatherWidget(QWidget):
         """Update weather location."""
         self.latitude = latitude
         self.longitude = longitude
-        self.location_label.setText(f"Location: {latitude:.2f}°N, {longitude:.2f}°E")
         self.logger.info(f"Weather location updated: {latitude}, {longitude}")
         
     @Slot()
@@ -159,12 +151,12 @@ class PySide6WeatherWidget(QWidget):
             image_data = BytesIO(response.content)
             pil_image = Image.open(image_data)
             
-            # Scale image for better visibility
+            # Scale image to fill widget space better
             original_width, original_height = pil_image.size
             self.logger.info(f"Original image size: {original_width}x{original_height}")
             
-            # Target size for widget
-            target_width = 400
+            # Target size for widget - larger to maximize space usage
+            target_width = 600
             scale_factor = target_width / original_width
             new_width = int(original_width * scale_factor)
             new_height = int(original_height * scale_factor)
@@ -186,8 +178,8 @@ class PySide6WeatherWidget(QWidget):
             self.forecast_image_label.setScaledContents(False)
             
             # Update status
-            self.status_label.setText("✓ Forecast updated - Data from ClearOutside.com")
-            self.status_label.setStyleSheet("color: #4CAF50; font-size: 8pt;")
+            self.status_label.setText("✓ From ClearOutside.com")
+            self.status_label.setStyleSheet("color: #4CAF50; font-size: 7pt;")
             
             self.logger.info("Weather forecast loaded successfully")
             

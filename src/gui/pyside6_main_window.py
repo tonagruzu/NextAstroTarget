@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
     QMessageBox, QDockWidget
 )
 from PySide6.QtCore import Qt, QTime, QTimer, Signal, Slot
-from PySide6.QtGui import QFont, QPalette, QColor, QIcon
+from PySide6.QtGui import QFont, QPalette, QColor, QIcon, QPainter, QBrush, QPen
 from datetime import datetime, timedelta
 import logging
 from typing import Optional, Dict, Any
@@ -22,6 +22,103 @@ from src.gui.pyside6_target_selection import PySide6TargetSelectionGUI
 from src.gui.pyside6_weather_widget import PySide6WeatherWidget
 from src.utils.astronomical_calculations import AstronomicalCalculator
 from src.utils.location_service import LocationService
+
+
+class MoonPhaseWidget(QWidget):
+    """Custom widget to display moon phase graphic."""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setMinimumSize(90, 120)
+        self.setMaximumSize(90, 120)
+        self.phase_data = None
+        
+    def set_phase_data(self, phase_data: Dict[str, Any]):
+        """Update moon phase data and trigger repaint."""
+        self.phase_data = phase_data
+        self.update()
+        
+    def paintEvent(self, event):
+        """Draw moon phase graphic."""
+        if not self.phase_data:
+            return
+            
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        
+        # Canvas dimensions
+        margin = 5
+        size = 70
+        center_x = 45
+        center_y = 45
+        
+        illumination = self.phase_data['illumination']
+        cycle_position = self.phase_data['cycle_position']
+        
+        # Draw main moon circle (lit portion)
+        painter.setBrush(QBrush(QColor("#F5F5DC")))  # Beige color
+        painter.setPen(QPen(QColor("gray"), 1))
+        painter.drawEllipse(margin, margin, size, size)
+        
+        # Draw shadow based on cycle position
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QBrush(QColor("#2F2F2F")))  # Dark shadow
+        
+        if illumination < 1:  # New Moon
+            painter.drawEllipse(margin + 1, margin + 1, size - 2, size - 2)
+        elif illumination > 99:  # Full Moon
+            pass  # No shadow
+        else:
+            # Partial phases
+            if cycle_position <= 0.5:
+                # Waxing phases
+                if cycle_position <= 0.25:  # New to First Quarter
+                    shadow_coverage = 1.0 - (cycle_position / 0.25)
+                    shadow_width = size * shadow_coverage
+                    if shadow_width > 0:
+                        painter.drawEllipse(margin, margin, int(shadow_width), size)
+                else:  # First Quarter to Full
+                    progress = (cycle_position - 0.25) / 0.25
+                    shadow_offset = (size / 2) * (1.0 - progress)
+                    if shadow_offset > 2:
+                        painter.drawEllipse(
+                            int(margin - shadow_offset), margin,
+                            int(shadow_offset * 2), size
+                        )
+            else:
+                # Waning phases
+                if cycle_position <= 0.75:  # Full to Last Quarter
+                    progress = (cycle_position - 0.5) / 0.25
+                    shadow_offset = (size / 2) * progress
+                    if shadow_offset > 2:
+                        painter.drawEllipse(
+                            int(margin + size - shadow_offset), margin,
+                            int(shadow_offset * 2), size
+                        )
+                else:  # Last Quarter to New
+                    progress = (cycle_position - 0.75) / 0.25
+                    shadow_start = size * (1.0 - progress)
+                    painter.drawEllipse(
+                        int(margin + shadow_start), margin,
+                        int(size - shadow_start), size
+                    )
+        
+        # Draw outer circle for definition
+        painter.setBrush(Qt.NoBrush)
+        painter.setPen(QPen(QColor("gray"), 2))
+        painter.drawEllipse(margin, margin, size, size)
+        
+        # Draw text
+        painter.setPen(QColor("white"))
+        font = QFont("Arial", 9, QFont.Bold)
+        painter.setFont(font)
+        painter.drawText(0, margin + size + 10, 90, 20, Qt.AlignCenter, f"{illumination:.0f}%")
+        
+        font.setPointSize(8)
+        font.setBold(False)
+        painter.setFont(font)
+        painter.setPen(QColor("gray"))
+        painter.drawText(0, margin + size + 25, 90, 20, Qt.AlignCenter, self.phase_data['phase_name'])
 
 
 class ModernMainWindow(QMainWindow):
@@ -68,8 +165,24 @@ class ModernMainWindow(QMainWindow):
         # Setup modern UI
         self.setup_modern_ui()
         self.apply_modern_stylesheet()
+        
+        # Update astronomical data
+        self.update_astronomical_data()
+        
+        # Check database and navigate
         self.check_database_and_navigate()
         
+        # Auto-refresh weather widget on startup
+        QTimer.singleShot(1000, self.auto_refresh_weather)
+        
+    def auto_refresh_weather(self):
+        """Auto-refresh weather widget after startup."""
+        try:
+            if hasattr(self, 'weather_widget'):
+                self.weather_widget.refresh_forecast()
+        except Exception as e:
+            self.logger.error(f"Failed to auto-refresh weather: {e}")
+    
     def setup_modern_ui(self):
         """Set up modern PySide6 interface."""
         self.setWindowTitle("NextAstroTarget - Astronomy Target Planning")
@@ -91,8 +204,8 @@ class ModernMainWindow(QMainWindow):
         # Top section: Controls and info
         top_widget = QWidget()
         top_layout = QVBoxLayout(top_widget)
-        top_layout.setContentsMargins(10, 10, 10, 10)
-        top_layout.setSpacing(10)
+        top_layout.setContentsMargins(8, 5, 8, 5)
+        top_layout.setSpacing(5)
         
         # Add sections
         self.setup_header(top_layout)
@@ -114,8 +227,8 @@ class ModernMainWindow(QMainWindow):
         self.object_data_container = QWidget()
         main_splitter.addWidget(self.object_data_container)
         
-        # Set splitter proportions
-        main_splitter.setSizes([400, 500])
+        # Set splitter proportions - less space for controls, more for object list
+        main_splitter.setSizes([320, 580])
         
         # Status bar
         self.status_bar = QStatusBar()
@@ -127,24 +240,25 @@ class ModernMainWindow(QMainWindow):
         header_frame = QFrame()
         header_frame.setObjectName("headerFrame")
         header_layout = QHBoxLayout(header_frame)
+        header_layout.setContentsMargins(5, 5, 5, 5)
         
-        # App title
+        # App title with larger font
         title_label = QLabel("🌌 NextAstroTarget")
-        title_font = QFont("Segoe UI", 20, QFont.Bold)
+        title_font = QFont("Segoe UI", 24, QFont.Bold)
         title_label.setFont(title_font)
         title_label.setStyleSheet("color: #4A9EFF;")
         header_layout.addWidget(title_label)
         
         header_layout.addStretch()
         
-        # Quick action buttons
+        # Quick action buttons - reduced height
         self.refresh_btn = QPushButton("🔄 Refresh Data")
         self.settings_btn = QPushButton("⚙️ Settings")
         self.help_btn = QPushButton("❓ Help")
         
         for btn in [self.refresh_btn, self.settings_btn, self.help_btn]:
-            btn.setFixedHeight(35)
-            btn.setMinimumWidth(120)
+            btn.setFixedHeight(30)
+            btn.setMinimumWidth(110)
             header_layout.addWidget(btn)
         
         parent_layout.addWidget(header_frame)
@@ -153,8 +267,12 @@ class ModernMainWindow(QMainWindow):
         """Create timing and location controls."""
         group = QGroupBox("📍 Observatory & Time Settings")
         group.setObjectName("controlGroup")
+        # Larger font for section title
+        group_font = QFont("Segoe UI", 11, QFont.Bold)
+        group.setFont(group_font)
         layout = QGridLayout(group)
-        layout.setSpacing(10)
+        layout.setSpacing(8)
+        layout.setContentsMargins(8, 8, 8, 8)
         
         # Location
         layout.addWidget(QLabel("Location:"), 0, 0)
@@ -190,7 +308,7 @@ class ModernMainWindow(QMainWindow):
         
         # Apply button
         apply_btn = QPushButton("Apply Settings")
-        apply_btn.setFixedHeight(35)
+        apply_btn.setFixedHeight(28)
         apply_btn.clicked.connect(self.apply_location_settings)
         layout.addWidget(apply_btn, 1, 5)
         
@@ -200,19 +318,34 @@ class ModernMainWindow(QMainWindow):
         """Create sun and moon information display."""
         group = QGroupBox("☀️ Sun & 🌙 Moon")
         group.setObjectName("infoGroup")
+        # Larger font for section title
+        group_font = QFont("Segoe UI", 11, QFont.Bold)
+        group.setFont(group_font)
         layout = QVBoxLayout(group)
+        layout.setSpacing(3)
+        layout.setContentsMargins(8, 5, 8, 5)
         
-        # Sun info
+        # Sun info - compact display
         self.sun_info_label = QLabel("Calculating sun data...")
         self.sun_info_label.setWordWrap(True)
+        self.sun_info_label.setStyleSheet("font-size: 9pt;")
         layout.addWidget(self.sun_info_label)
         
-        # Moon info
+        # Moon info with phase graphic
+        moon_container = QHBoxLayout()
+        moon_container.setSpacing(5)
+        
         self.moon_info_label = QLabel("Calculating moon data...")
         self.moon_info_label.setWordWrap(True)
-        layout.addWidget(self.moon_info_label)
+        self.moon_info_label.setStyleSheet("font-size: 9pt;")
+        moon_container.addWidget(self.moon_info_label, 1)
         
-        layout.addStretch()
+        # Add moon phase widget - smaller size
+        self.moon_phase_widget = MoonPhaseWidget()
+        self.moon_phase_widget.setMaximumSize(80, 100)
+        moon_container.addWidget(self.moon_phase_widget)
+        
+        layout.addLayout(moon_container)
         
         parent_splitter.addWidget(group)
         
@@ -220,7 +353,12 @@ class ModernMainWindow(QMainWindow):
         """Create weather forecast display."""
         group = QGroupBox("🌤️ Weather Forecast")
         group.setObjectName("infoGroup")
+        # Larger font for section title
+        group_font = QFont("Segoe UI", 11, QFont.Bold)
+        group.setFont(group_font)
         layout = QVBoxLayout(group)
+        layout.setSpacing(5)
+        layout.setContentsMargins(8, 8, 8, 8)
         
         try:
             self.weather_widget = PySide6WeatherWidget(group)
@@ -240,8 +378,12 @@ class ModernMainWindow(QMainWindow):
         """Create modern filtering controls."""
         group = QGroupBox("🔍 Target Filters")
         group.setObjectName("controlGroup")
+        # Larger font for section title
+        group_font = QFont("Segoe UI", 11, QFont.Bold)
+        group.setFont(group_font)
         layout = QGridLayout(group)
-        layout.setSpacing(8)
+        layout.setSpacing(6)
+        layout.setContentsMargins(8, 8, 8, 8)
         
         row = 0
         
@@ -252,7 +394,7 @@ class ModernMainWindow(QMainWindow):
         for rating in ["All", "3+", "4+", "5"]:
             btn = QPushButton(f"⭐ {rating}")
             btn.setCheckable(True)
-            btn.setFixedHeight(35)
+            btn.setFixedHeight(28)
             btn.clicked.connect(lambda checked, r=rating: self.filter_by_rating(r))
             self.rating_buttons[rating] = btn
             rating_layout.addWidget(btn)
@@ -267,7 +409,7 @@ class ModernMainWindow(QMainWindow):
         for obj_type in ["All", "Galaxies", "Nebulae", "Clusters", "Others"]:
             btn = QPushButton(obj_type)
             btn.setCheckable(True)
-            btn.setFixedHeight(35)
+            btn.setFixedHeight(28)
             btn.clicked.connect(lambda checked, t=obj_type: self.filter_by_type(t))
             self.type_buttons[obj_type] = btn
             type_layout.addWidget(btn)
@@ -307,14 +449,14 @@ class ModernMainWindow(QMainWindow):
         
         # Apply filters button
         apply_filters_btn = QPushButton("🔎 Apply Filters")
-        apply_filters_btn.setFixedHeight(40)
+        apply_filters_btn.setFixedHeight(32)
         apply_filters_btn.setMinimumWidth(200)
         apply_filters_btn.clicked.connect(self.apply_all_filters)
         layout.addWidget(apply_filters_btn, row, 0, 1, 4)
         
         # Clear filters button
         clear_filters_btn = QPushButton("🔄 Clear All Filters")
-        clear_filters_btn.setFixedHeight(40)
+        clear_filters_btn.setFixedHeight(32)
         clear_filters_btn.clicked.connect(self.clear_all_filters)
         layout.addWidget(clear_filters_btn, row, 4, 1, 4)
         
@@ -540,6 +682,79 @@ class ModernMainWindow(QMainWindow):
             layout.addWidget(error_label)
             
     @Slot()
+    def update_astronomical_data(self):
+        """Update sun and moon data displays."""
+        try:
+            from datetime import datetime, timedelta
+            current_time = datetime.now()
+            
+            # Update sun position
+            sun_alt, sun_az = self.astro_calc.calculate_sun_position(
+                current_time, self.observatory['latitude'], self.observatory['longitude']
+            )
+            
+            # Calculate sun times
+            sun_times = self.astro_calc.calculate_sun_times(
+                self.observatory['latitude'], self.observatory['longitude'], current_time.date()
+            )
+            
+            # Get GMT offset
+            gmt_offset_hours = self.observatory.get('gmt_offset', 0)
+            gmt_offset = timedelta(hours=gmt_offset_hours)
+            if self.observatory.get('dst_active', False):
+                gmt_offset += timedelta(hours=1)
+            
+            # Convert to local time
+            local_sunrise = sun_times['sunrise'] + gmt_offset
+            local_sunset = sun_times['sunset'] + gmt_offset
+            local_dawn = sun_times['nautical_dawn'] + gmt_offset
+            local_dusk = sun_times['nautical_dusk'] + gmt_offset
+            
+            # Determine sun status
+            if sun_alt > 0:
+                sun_status = "Above horizon"
+            elif sun_alt > -6:
+                sun_status = "Civil twilight"
+            elif sun_alt > -12:
+                sun_status = "Nautical twilight"
+            elif sun_alt > -18:
+                sun_status = "Astronomical twilight"
+            else:
+                sun_status = "Night"
+            
+            # Update sun label - compact format
+            sun_text = f"""<b>☀️ Sun:</b> {sun_alt:.1f}° alt | {sun_az:.1f}° az<br>
+↑ {local_sunrise.strftime('%H:%M')} | ↓ {local_sunset.strftime('%H:%M')} | Nautical: {local_dawn.strftime('%H:%M')}-{local_dusk.strftime('%H:%M')}"""
+            self.sun_info_label.setText(sun_text)
+            
+            # Update moon position
+            moon_alt, moon_az = self.astro_calc.calculate_moon_position(
+                current_time, self.observatory['latitude'], self.observatory['longitude']
+            )
+            moon_phase_data = self.astro_calc.calculate_moon_phase(current_time)
+            
+            # Calculate moon times
+            moon_times = self.astro_calc.calculate_moon_times(
+                self.observatory['latitude'], self.observatory['longitude'], current_time.date()
+            )
+            
+            local_moonrise = moon_times['moonrise'] + gmt_offset
+            local_moonset = moon_times.get('moonset', moon_times['moonrise'] + timedelta(hours=12)) + gmt_offset
+            
+            # Update moon label - compact format
+            moon_text = f"""<b>🌙 Moon:</b> {moon_alt:.1f}° alt | {moon_az:.1f}° az<br>
+{moon_phase_data['phase_name']} ({moon_phase_data['illumination']:.0f}%) | ↑ {local_moonrise.strftime('%H:%M')} | ↓ {local_moonset.strftime('%H:%M')}"""
+            self.moon_info_label.setText(moon_text)
+            
+            # Update moon phase widget
+            self.moon_phase_widget.set_phase_data(moon_phase_data)
+            
+        except Exception as e:
+            self.logger.error(f"Error updating astronomical data: {e}", exc_info=True)
+            self.sun_info_label.setText("☀️ Sun: Error calculating data")
+            self.moon_info_label.setText("🌙 Moon: Error calculating data")
+    
+    @Slot()
     def apply_location_settings(self):
         """Apply location and time settings."""
         self.observatory['latitude'] = self.lat_spin.value()
@@ -550,6 +765,9 @@ class ModernMainWindow(QMainWindow):
             f"Updated location: {self.observatory['latitude']:.4f}°, "
             f"{self.observatory['longitude']:.4f}°"
         )
+        
+        # Update astronomical data with new location
+        self.update_astronomical_data()
         
         # Refresh calculations if target screen exists
         if self.current_screen:
