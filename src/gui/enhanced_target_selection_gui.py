@@ -83,21 +83,23 @@ class AstrobinTooltip:
             )
             name_label.pack(anchor='w', pady=(0, 5))
             
-            # Try to load and display Astrobin image
+            # Try to load images from multiple sources
             astrobin_id = object_data.get('astrobin_id')
             self.logger.info(f"Astrobin ID for {object_name}: {astrobin_id}")
             image_loaded = False
             
+            # First try with Astrobin ID if available
             if astrobin_id and pd.notna(astrobin_id):
                 try:
                     # Clean the ID
                     astrobin_id_clean = str(int(float(astrobin_id)))
-                    self.logger.info(f"Attempting to load image for ID: {astrobin_id_clean}")
+                    self.logger.info(f"Attempting to load image with Astrobin ID: {astrobin_id_clean}")
                     image_loaded = self._load_astrobin_image(main_frame, astrobin_id_clean, object_name)
                 except (ValueError, TypeError):
                     self.logger.debug(f"Invalid Astrobin ID format: {astrobin_id}")
-            else:
-                self.logger.info(f"No valid Astrobin ID found for {object_name}")
+            
+            # No need to try alternative sources - they don't reliably provide images
+            # Instead, show enhanced object information
             
             # If no image loaded, show object information
             if not image_loaded:
@@ -107,72 +109,115 @@ class AstrobinTooltip:
             self.logger.warning(f"Error showing Astrobin tooltip: {e}")
             
     def _load_astrobin_image(self, parent_frame, astrobin_id, object_name):
-        """Try to load image from Astrobin."""
-        self.logger.info(f"_load_astrobin_image called for ID {astrobin_id}")
-        try:
-            # Check cache first
-            cache_key = f"astrobin_{astrobin_id}"
-            if cache_key in self.image_cache:
-                photo = self.image_cache[cache_key]
-                if photo:
-                    self.logger.info(f"Using cached image for ID {astrobin_id}")
-                    image_label = tk.Label(parent_frame, image=photo, bg='black')
-                    image_label.pack(pady=(0, 5))
-                    return True
-                else:
-                    self.logger.info(f"Cached negative result for ID {astrobin_id}")
-                    return False
-            
-            # Try to fetch image from Astrobin
-            url = f"https://www.astrobin.com/{astrobin_id}/0/rawthumb/regular/"
-            self.logger.info(f"Fetching image from: {url}")
-            
-            headers = {
-                'User-Agent': 'NextAstroTarget/1.1.0 (Astronomy Application)',
-                'Accept': 'image/*,*/*;q=0.8'
-            }
-            
-            response = requests.get(url, headers=headers, timeout=5)
-            self.logger.info(f"Response status: {response.status_code}")
-            
-            if response.status_code == 200:
-                # Load and resize image
-                img = Image.open(BytesIO(response.content))
-                
-                # Resize image to fit tooltip (max 300x250)
-                img.thumbnail((300, 250), Image.Resampling.LANCZOS)
-                
-                # Convert to PhotoImage
-                photo = ImageTk.PhotoImage(img)
-                
-                # Cache the image
-                self.image_cache[cache_key] = photo
-                
-                # Display image
-                image_label = tk.Label(parent_frame, image=photo, bg='black')
-                image_label.pack(pady=(0, 5))
-                
-                # Add credit label
-                credit_label = tk.Label(
-                    parent_frame,
-                    text=f"📸 AstroBin ID: {astrobin_id}",
-                    font=("Arial", 8),
-                    bg="black",
-                    fg="gray"
-                )
-                credit_label.pack(anchor='w')
-                
-                return True
-            else:
-                # Cache negative result to avoid repeated requests
-                self.image_cache[cache_key] = None
-                return False
-                
-        except Exception as e:
-            self.logger.debug(f"Failed to load Astrobin image for ID {astrobin_id}: {e}")
-            # Cache negative result
-            self.image_cache[f"astrobin_{astrobin_id}"] = None
+        """Try to load image from multiple sources with fallback."""
+        self.logger.info(f"Loading image for {object_name}, Astrobin ID: {astrobin_id}")
+        
+        # Try multiple image sources in priority order
+        image_sources = []
+        
+        # Add Astrobin source only if we have a valid ID
+        if astrobin_id != "0" and astrobin_id.isdigit() and int(astrobin_id) > 0:
+            image_sources.append(
+                ("astrobin", f"https://www.astrobin.com/{astrobin_id}/0/rawthumb/regular/", f"📸 AstroBin ID: {astrobin_id}")
+            )
+        
+        # If no valid Astrobin ID, return False to show enhanced object info
+        if not image_sources:
             return False
+            
+        # Process the available image sources
+        image_sources.extend([
+            ("simbad_basic", f"http://simbad.u-strasbg.fr/simbad/sim-basic?Ident={object_name.replace(' ', '+')}&submit=SIMBAD+search", f"� SIMBAD Database"),
+        ])
+        
+        for source_name, url, credit_text in image_sources:
+            try:
+                cache_key = f"{source_name}_{astrobin_id}_{object_name.replace(' ', '_')}"
+                
+                # Check cache first
+                if cache_key in self.image_cache:
+                    photo = self.image_cache[cache_key]
+                    if photo:
+                        self.logger.info(f"Using cached {source_name} image for {object_name}")
+                        image_label = tk.Label(parent_frame, image=photo, bg='black')
+                        image_label.pack(pady=(0, 5))
+                        
+                        # Add credit label
+                        credit_label = tk.Label(
+                            parent_frame,
+                            text=credit_text,
+                            font=("Arial", 8),
+                            bg="black",
+                            fg="gray"
+                        )
+                        credit_label.pack(anchor='w')
+                        return True
+                    else:
+                        continue  # Try next source
+                
+                self.logger.info(f"Fetching {source_name} image from: {url}")
+                
+                headers = {
+                    'User-Agent': 'NextAstroTarget/1.1.0 (Astronomy Application)',
+                    'Accept': 'image/*,*/*;q=0.8'
+                }
+                
+                response = requests.get(url, headers=headers, timeout=8)
+                self.logger.debug(f"{source_name} response status: {response.status_code}")
+                
+                if response.status_code == 200:
+                    # Check if we actually got an image
+                    content_type = response.headers.get('content-type', '')
+                    if 'image' in content_type or source_name == 'dss':  # DSS doesn't always set proper content-type
+                        try:
+                            # Load and resize image
+                            img = Image.open(BytesIO(response.content))
+                            
+                            # Resize image to fit tooltip
+                            img.thumbnail((300, 250), Image.Resampling.LANCZOS)
+                            
+                            # Convert to PhotoImage
+                            photo = ImageTk.PhotoImage(img)
+                            
+                            # Cache the image
+                            self.image_cache[cache_key] = photo
+                            
+                            # Display image
+                            image_label = tk.Label(parent_frame, image=photo, bg='black')
+                            image_label.pack(pady=(0, 5))
+                            
+                            # Add credit label
+                            credit_label = tk.Label(
+                                parent_frame,
+                                text=credit_text,
+                                font=("Arial", 8),
+                                bg="black",
+                                fg="gray"
+                            )
+                            credit_label.pack(anchor='w')
+                            
+                            self.logger.info(f"Successfully loaded {source_name} image for {object_name}")
+                            return True
+                            
+                        except Exception as img_error:
+                            self.logger.debug(f"Failed to process {source_name} image: {img_error}")
+                            # Cache negative result
+                            self.image_cache[cache_key] = None
+                            continue
+                else:
+                    # Cache negative result for this source
+                    self.image_cache[cache_key] = None
+                    continue
+                    
+            except Exception as e:
+                self.logger.debug(f"Failed to load {source_name} image: {e}")
+                # Cache negative result for this source
+                self.image_cache[cache_key] = None
+                continue
+        
+        # If all sources failed, return False
+        self.logger.info(f"No images found for {object_name}")
+        return False
     
     def _show_object_info(self, parent_frame, object_data, object_name):
         """Show object information when no image is available."""
@@ -1011,6 +1056,14 @@ class EnhancedTargetSelectionGUI:
         except Exception as e:
             self.logger.error(f"Error applying size filter: {e}")
     
+    def apply_transit_filter(self, start_time: str, end_time: str):
+        """Apply transit time range filter."""
+        try:
+            self.active_filters['transit'] = (start_time, end_time)
+            self.apply_all_filters()
+        except Exception as e:
+            self.logger.error(f"Error applying transit filter: {e}")
+    
     def apply_rating_filter(self, min_rating: int):
         """Apply minimum rating filter."""
         try:
@@ -1109,6 +1162,15 @@ class EnhancedTargetSelectionGUI:
                             (self.filtered_objects['object_type'].isin(['Neb', 'Neb '])) &
                             (self.filtered_objects['subtype'].isin(['PN', 'PPN']))
                         ]
+                
+                elif filter_name == 'transit':
+                    start_time, end_time = filter_value
+                    # Filter by transit time - objects that transit between start_time and end_time
+                    self.filtered_objects = self.filtered_objects[
+                        self.filtered_objects.apply(
+                            lambda row: self.is_transit_in_range(row, start_time, end_time), axis=1
+                        )
+                    ]
             
             # Update display
             self.update_display()
@@ -1124,6 +1186,61 @@ class EnhancedTargetSelectionGUI:
             dec_degrees = float(dec_value)
             return min_dec <= dec_degrees <= max_dec
         except (ValueError, TypeError):
+            return False
+    
+    def is_transit_in_range(self, object_row, start_time: str, end_time: str) -> bool:
+        """Check if object transits between the specified time range."""
+        try:
+            # Get RA from the object data
+            ra_degrees = object_row.get('ra_degrees')
+            if pd.isna(ra_degrees):
+                return False
+            
+            ra_deg = float(ra_degrees)
+            
+            # Calculate transit time using astronomical calculations
+            # Transit occurs when object crosses the meridian (LST = RA)
+            from datetime import datetime, timedelta
+            
+            # Convert current time to datetime object for calculations
+            current_dt = self.current_time if hasattr(self, 'current_time') else datetime.now()
+            
+            # Convert RA from degrees to hours (divide by 15)
+            ra_hours = ra_deg / 15.0
+            
+            # Calculate when the object transits (LST = RA)
+            transit_time = self.astro_calc.calculate_transit_time(
+                ra_hours, 
+                self.observatory['longitude'], 
+                current_dt.date()
+            )
+            
+            if not transit_time:
+                return False
+            
+            # Get just the time portion (HH:MM format)
+            transit_time_str = transit_time.strftime("%H:%M")
+            
+            # Parse the filter times
+            start_hour, start_min = map(int, start_time.split(':'))
+            end_hour, end_min = map(int, end_time.split(':'))
+            transit_hour, transit_min = map(int, transit_time_str.split(':'))
+            
+            # Convert to minutes for easier comparison
+            start_minutes = start_hour * 60 + start_min
+            end_minutes = end_hour * 60 + end_min
+            transit_minutes = transit_hour * 60 + transit_min
+            
+            # Handle the case where the time range crosses midnight (e.g., 18:00 to 06:00)
+            if start_minutes > end_minutes:
+                # Time range crosses midnight
+                return transit_minutes >= start_minutes or transit_minutes <= end_minutes
+            else:
+                # Normal time range within same day
+                return start_minutes <= transit_minutes <= end_minutes
+                
+        except Exception as e:
+            self.logger.error(f"Error calculating transit time for object: {e}")
             return False
     
     def clear_all_filters(self):

@@ -52,6 +52,7 @@ class EnhancedMainWindow:
         self.active_filters = {
             'declination': False,
             'size': False,
+            'transit': False,
             'rating': None,  # Stores the active rating level
             'catalog': None,  # Stores the active catalog
             'type': None     # Stores the active object type
@@ -533,9 +534,36 @@ class EnhancedMainWindow:
         )
         self.filter_buttons['size'].pack(side=tk.LEFT, padx=5)
         
+        # Transit Time limits (purple)
+        transit_frame = ttk.Frame(parent)
+        transit_frame.grid(row=3, column=0, sticky=(tk.W, tk.E), padx=5, pady=2)
+        
+        ttk.Label(transit_frame, text="Transit Time (24h format):").pack(side=tk.LEFT)
+        
+        # Use saved values if available, otherwise use defaults
+        start_time_default = "18:00"
+        end_time_default = "06:00"
+        if hasattr(self, 'saved_filter_values') and self.saved_filter_values:
+            start_time_default = self.saved_filter_values.get('transit_start', "18:00")
+            end_time_default = self.saved_filter_values.get('transit_end', "06:00")
+            
+        self.transit_start_var = tk.StringVar(value=start_time_default)
+        ttk.Entry(transit_frame, textvariable=self.transit_start_var, width=8).pack(side=tk.LEFT, padx=2)
+        ttk.Label(transit_frame, text="to").pack(side=tk.LEFT, padx=2)
+        self.transit_end_var = tk.StringVar(value=end_time_default)
+        ttk.Entry(transit_frame, textvariable=self.transit_end_var, width=8).pack(side=tk.LEFT, padx=2)
+        
+        self.filter_buttons['transit'] = tk.Button(
+            transit_frame, text="Apply Transit Filter",
+            command=self.apply_transit_filter,
+            bg="#f8f0ff", fg="purple", font=("Arial", 9),
+            relief="raised", borderwidth=1
+        )
+        self.filter_buttons['transit'].pack(side=tk.LEFT, padx=5)
+        
         # Best targets (red)
         rating_frame = ttk.Frame(parent)
-        rating_frame.grid(row=3, column=0, sticky=(tk.W, tk.E), padx=5, pady=2)
+        rating_frame.grid(row=4, column=0, sticky=(tk.W, tk.E), padx=5, pady=2)
         
         ttk.Label(rating_frame, text="Best Targets:").pack(side=tk.LEFT)
         
@@ -551,7 +579,7 @@ class EnhancedMainWindow:
         
         # Catalog filters (blue dropdown style)
         catalog_frame = ttk.Frame(parent)
-        catalog_frame.grid(row=4, column=0, sticky=(tk.W, tk.E), padx=5, pady=2)
+        catalog_frame.grid(row=5, column=0, sticky=(tk.W, tk.E), padx=5, pady=2)
         
         ttk.Label(catalog_frame, text="Catalogs:").pack(side=tk.LEFT)
         
@@ -566,7 +594,7 @@ class EnhancedMainWindow:
         
         # Object type filters (brown)
         type_frame = ttk.Frame(parent)
-        type_frame.grid(row=5, column=0, sticky=(tk.W, tk.E), padx=5, pady=2)
+        type_frame.grid(row=6, column=0, sticky=(tk.W, tk.E), padx=5, pady=2)
         
         ttk.Label(type_frame, text="Object Types:").pack(side=tk.LEFT)
         
@@ -582,7 +610,7 @@ class EnhancedMainWindow:
         
         # Sorting controls (gray)
         sort_frame = ttk.Frame(parent)
-        sort_frame.grid(row=6, column=0, sticky=(tk.W, tk.E), padx=5, pady=2)
+        sort_frame.grid(row=7, column=0, sticky=(tk.W, tk.E), padx=5, pady=2)
         
         ttk.Label(sort_frame, text="Sorting:").pack(side=tk.LEFT)
         
@@ -752,6 +780,11 @@ class EnhancedMainWindow:
                 button.configure(bg="#009900", fg="white", font=("Arial", 9, "bold"), text="🟢 Apply Size Filter")
             else:
                 button.configure(bg="#f0fff0", fg="darkgreen", font=("Arial", 9), text="Apply Size Filter")
+        elif filter_type == 'transit':
+            if is_active:
+                button.configure(bg="#800080", fg="white", font=("Arial", 9, "bold"), text="🟣 Apply Transit Filter")
+            else:
+                button.configure(bg="#f8f0ff", fg="purple", font=("Arial", 9), text="Apply Transit Filter")
         elif filter_type.startswith('rating_'):
             # Get the original button text and add/remove indicator
             current_text = button.cget('text')
@@ -790,6 +823,7 @@ class EnhancedMainWindow:
         self.active_filters = {
             'declination': False,
             'size': False,
+            'transit': False,
             'rating': None,
             'catalog': None,
             'type': None
@@ -809,6 +843,8 @@ class EnhancedMainWindow:
             active_list.append("Declination")
         if self.active_filters['size']:
             active_list.append("Size")
+        if self.active_filters['transit']:
+            active_list.append("Transit Time")
         if self.active_filters['rating']:
             active_list.append(f"Rating {self.active_filters['rating']}+")
         if self.active_filters['catalog']:
@@ -1229,6 +1265,30 @@ class EnhancedMainWindow:
         except ValueError:
             messagebox.showerror("Invalid Input", "Please enter valid size values")
     
+    def apply_transit_filter(self):
+        """Apply transit time range filter."""
+        try:
+            start_time = self.transit_start_var.get()
+            end_time = self.transit_end_var.get()
+            
+            # Validate time format (HH:MM)
+            import re
+            time_pattern = r'^([01]?[0-9]|2[0-3]):([0-5][0-9])$'
+            if not re.match(time_pattern, start_time) or not re.match(time_pattern, end_time):
+                raise ValueError("Invalid time format")
+            
+            if hasattr(self, 'target_selection_gui'):
+                self.target_selection_gui.apply_transit_filter(start_time, end_time)
+            
+            # Update visual state
+            self.active_filters['transit'] = True
+            self.update_filter_button_style('transit', True)
+            self.update_filter_status_display()
+            
+            self.update_status(f"[ACTIVE] Filtered by transit time: {start_time} to {end_time}")
+        except ValueError:
+            messagebox.showerror("Invalid Input", "Please enter valid time values in HH:MM format (24-hour)")
+    
     def filter_by_rating(self, min_rating):
         """Filter by minimum rating."""
         if hasattr(self, 'target_selection_gui'):
@@ -1441,7 +1501,9 @@ class EnhancedMainWindow:
                     'min_dec': filter_config.get('min_declination', '-30'),
                     'max_dec': filter_config.get('max_declination', '+90'),
                     'min_size': filter_config.get('min_size', '0'),
-                    'max_size': filter_config.get('max_size', '999')
+                    'max_size': filter_config.get('max_size', '999'),
+                    'transit_start': filter_config.get('transit_start', '18:00'),
+                    'transit_end': filter_config.get('transit_end', '06:00')
                 }
                 self.logger.info("Loaded saved filter values")
             else:
@@ -1490,6 +1552,10 @@ class EnhancedMainWindow:
                 filter_config['min_size'] = self.min_size_var.get()
             if hasattr(self, 'max_size_var'):
                 filter_config['max_size'] = self.max_size_var.get()
+            if hasattr(self, 'transit_start_var'):
+                filter_config['transit_start'] = self.transit_start_var.get()
+            if hasattr(self, 'transit_end_var'):
+                filter_config['transit_end'] = self.transit_end_var.get()
             
             # Write config file
             with open(config_path, 'w') as configfile:
