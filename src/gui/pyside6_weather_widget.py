@@ -26,6 +26,19 @@ class PySide6WeatherWidget(QWidget):
         
         self.setup_ui()
         self.apply_stylesheet()
+        self.setup_auto_refresh()
+        
+    def setup_auto_refresh(self):
+        """Setup automatic periodic refresh every hour."""
+        # Create timer for hourly refresh
+        self.refresh_timer = QTimer(self)
+        self.refresh_timer.timeout.connect(self.refresh_forecast)
+        # Refresh every hour (3600000 milliseconds)
+        self.refresh_timer.start(3600000)
+        self.logger.info("Weather auto-refresh timer started (1 hour interval)")
+        
+        # Initial load after 2 seconds (to allow location to be set first)
+        QTimer.singleShot(2000, self.refresh_forecast)
         
     def setup_ui(self):
         """Create weather widget UI."""
@@ -33,36 +46,30 @@ class PySide6WeatherWidget(QWidget):
         layout.setContentsMargins(5, 5, 5, 5)
         layout.setSpacing(5)
         
-        # Header with controls
+        # Header with controls - compact, buttons only
         header_layout = QHBoxLayout()
-        header_icon = QLabel("🌤️")
-        header_icon.setFont(QFont("Segoe UI Emoji", 12))
-        header_label = QLabel("Weather Forecast")
-        header_label.setStyleSheet("color: #4A9EFF; font-weight: bold; font-size: 11px;")
-        header_layout.addWidget(header_icon)
-        header_layout.addWidget(header_label)
         header_layout.addStretch()
         
         # Refresh button
-        self.refresh_button = QPushButton("↻")
-        self.refresh_button.setFixedSize(26, 26)
+        self.refresh_button = QPushButton("Refresh")
+        self.refresh_button.setFixedSize(80, 28)
         self.refresh_button.setToolTip("Refresh weather forecast")
         self.refresh_button.clicked.connect(self.refresh_forecast)
         header_layout.addWidget(self.refresh_button)
         
         # View on website button
-        self.view_button = QPushButton("🔗")
-        self.view_button.setFixedSize(26, 26)
+        self.view_button = QPushButton("View")
+        self.view_button.setFixedSize(60, 28)
         self.view_button.setToolTip("Open ClearOutside website")
         self.view_button.clicked.connect(self.open_clearoutside_website)
         header_layout.addWidget(self.view_button)
         
         layout.addLayout(header_layout)
         
-        # Forecast image display - larger, minimal padding
-        self.forecast_image_label = QLabel("Click ↻ to load forecast")
+        # Forecast image display - larger for expanded widget
+        self.forecast_image_label = QLabel("Loading forecast...")
         self.forecast_image_label.setAlignment(Qt.AlignCenter)
-        self.forecast_image_label.setMinimumHeight(150)
+        self.forecast_image_label.setMinimumHeight(300)
         self.forecast_image_label.setWordWrap(True)
         self.forecast_image_label.setStyleSheet("""
             QLabel {
@@ -94,7 +101,8 @@ class PySide6WeatherWidget(QWidget):
                 color: #e0e0e0;
                 border: 1px solid #4a4a4a;
                 border-radius: 4px;
-                font-size: 12pt;
+                font-size: 9pt;
+                font-weight: bold;
             }
             
             QPushButton:hover {
@@ -155,8 +163,8 @@ class PySide6WeatherWidget(QWidget):
             original_width, original_height = pil_image.size
             self.logger.info(f"Original image size: {original_width}x{original_height}")
             
-            # Target size for widget - larger to maximize space usage
-            target_width = 600
+            # Target size for widget - narrower but taller for vertical layout
+            target_width = 650
             scale_factor = target_width / original_width
             new_width = int(original_width * scale_factor)
             new_height = int(original_height * scale_factor)

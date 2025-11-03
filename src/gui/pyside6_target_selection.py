@@ -113,7 +113,7 @@ class PySide6TargetSelectionGUI(QWidget):
         header.setSectionResizeMode(0, QHeaderView.Stretch)  # Object name stretches
         
         # Set specific column widths
-        self.table.setColumnWidth(8, 80)  # Rating column - wider to show 5 stars fully
+        self.table.setColumnWidth(8, 120)  # Rating column - wide enough for 5 stars (⭐⭐⭐⭐⭐)
         
         # Context menu
         self.table.setContextMenuPolicy(Qt.CustomContextMenu)

@@ -258,17 +258,6 @@ class ModernMainWindow(QMainWindow):
         
         # Check database and navigate
         self.check_database_and_navigate()
-        
-        # Auto-refresh weather widget on startup
-        QTimer.singleShot(1000, self.auto_refresh_weather)
-        
-    def auto_refresh_weather(self):
-        """Auto-refresh weather widget after startup."""
-        try:
-            if hasattr(self, 'weather_widget'):
-                self.weather_widget.refresh_forecast()
-        except Exception as e:
-            self.logger.error(f"Failed to auto-refresh weather: {e}")
     
     def setup_modern_ui(self):
         """Set up modern PySide6 interface."""
@@ -294,17 +283,28 @@ class ModernMainWindow(QMainWindow):
         top_layout.setContentsMargins(8, 5, 8, 5)
         top_layout.setSpacing(5)
         
-        # Add sections
+        # Add header
         self.setup_header(top_layout)
-        self.setup_timing_location(top_layout)
         
-        # Create horizontal splitter for weather and sun/moon
-        info_splitter = QSplitter(Qt.Horizontal)
+        # Create horizontal splitter for Observatory and Weather sections
+        top_horizontal_splitter = QSplitter(Qt.Horizontal)
         
-        self.setup_sun_moon_info(info_splitter)
-        self.setup_weather_info(info_splitter)
+        # Left side: Observatory (narrowed by 50%)
+        left_widget = QWidget()
+        left_layout = QVBoxLayout(left_widget)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setSpacing(5)
+        self.setup_timing_location(left_layout)
+        self.setup_sun_moon_info_inline(left_layout)
+        top_horizontal_splitter.addWidget(left_widget)
         
-        top_layout.addWidget(info_splitter)
+        # Right side: Weather (taller, using vertical space)
+        self.setup_weather_info_inline(top_horizontal_splitter)
+        
+        # Set splitter proportions: Observatory/Sun+Moon 50%, Weather 50%
+        top_horizontal_splitter.setSizes([600, 600])
+        
+        top_layout.addWidget(top_horizontal_splitter)
         self.setup_filtering_controls(top_layout)
         
         # Add to main splitter
@@ -357,6 +357,7 @@ class ModernMainWindow(QMainWindow):
         # Larger font for section title
         group_font = QFont("Segoe UI", 11, QFont.Bold)
         group.setFont(group_font)
+        # No width constraint - expand to fill available space
         layout = QGridLayout(group)
         layout.setSpacing(8)
         layout.setContentsMargins(8, 8, 8, 8)
@@ -424,6 +425,8 @@ class ModernMainWindow(QMainWindow):
         # Larger font for section title
         group_font = QFont("Segoe UI", 11, QFont.Bold)
         group.setFont(group_font)
+        # Reduce width by 50%
+        group.setMaximumWidth(400)
         layout = QVBoxLayout(group)
         layout.setSpacing(3)
         layout.setContentsMargins(8, 5, 8, 5)
@@ -459,6 +462,8 @@ class ModernMainWindow(QMainWindow):
         # Larger font for section title
         group_font = QFont("Segoe UI", 11, QFont.Bold)
         group.setFont(group_font)
+        # Make weather widget taller - double the height
+        group.setMinimumHeight(350)
         layout = QVBoxLayout(group)
         layout.setSpacing(5)
         layout.setContentsMargins(8, 8, 8, 8)
@@ -477,6 +482,70 @@ class ModernMainWindow(QMainWindow):
         
         parent_splitter.addWidget(group)
         
+    def setup_sun_moon_info_inline(self, parent_layout):
+        """Create sun and moon information display (inline for left column)."""
+        group = QGroupBox("☀️ Sun & 🌙 Moon")
+        group.setObjectName("infoGroup")
+        # Larger font for section title
+        group_font = QFont("Segoe UI", 11, QFont.Bold)
+        group.setFont(group_font)
+        # No width constraint - expand to fill available space
+        layout = QVBoxLayout(group)
+        layout.setSpacing(3)
+        layout.setContentsMargins(8, 5, 8, 5)
+        
+        # Sun info - compact display
+        self.sun_info_label = QLabel("Calculating sun data...")
+        self.sun_info_label.setWordWrap(True)
+        self.sun_info_label.setStyleSheet("font-size: 13pt; font-weight: 500;")
+        layout.addWidget(self.sun_info_label)
+        
+        # Moon info with phase graphic
+        moon_container = QHBoxLayout()
+        moon_container.setSpacing(5)
+        
+        self.moon_info_label = QLabel("Calculating moon data...")
+        self.moon_info_label.setWordWrap(True)
+        self.moon_info_label.setStyleSheet("font-size: 13pt; font-weight: 500;")
+        moon_container.addWidget(self.moon_info_label, 1)
+        
+        # Add moon phase widget - smaller size
+        self.moon_phase_widget = MoonPhaseWidget()
+        self.moon_phase_widget.setMaximumSize(80, 100)
+        moon_container.addWidget(self.moon_phase_widget)
+        
+        layout.addLayout(moon_container)
+        
+        parent_layout.addWidget(group)
+        
+    def setup_weather_info_inline(self, parent_splitter):
+        """Create weather forecast display (inline for right column - taller and narrower)."""
+        group = QGroupBox("🌤️ Weather Forecast")
+        group.setObjectName("infoGroup")
+        # Larger font for section title
+        group_font = QFont("Segoe UI", 11, QFont.Bold)
+        group.setFont(group_font)
+        # Narrower but taller - use vertical space
+        group.setMaximumWidth(700)
+        group.setMinimumHeight(400)
+        layout = QVBoxLayout(group)
+        layout.setSpacing(5)
+        layout.setContentsMargins(8, 8, 8, 8)
+        
+        try:
+            self.weather_widget = PySide6WeatherWidget(group)
+            # Update weather location from observatory settings
+            self.weather_widget.update_location(
+                self.observatory['latitude'],
+                self.observatory['longitude']
+            )
+            layout.addWidget(self.weather_widget)
+        except Exception as e:
+            self.logger.error(f"Failed to create weather widget: {e}")
+            layout.addWidget(QLabel("Weather data unavailable"))
+        
+        parent_splitter.addWidget(group)
+    
     def setup_filtering_controls(self, parent_layout):
         """Create modern filtering controls."""
         group = QGroupBox("🔍 Target Filters")
@@ -920,8 +989,9 @@ class ModernMainWindow(QMainWindow):
                 sun_status = "Night"
             
             # Update sun label - compact format
+            # Nautical dark time: from dusk (evening) to dawn (next morning)
             sun_text = f"""<b>☀️ Sun:</b> {sun_alt:.1f}° alt | {sun_az:.1f}° az<br>
-↑ {local_sunrise.strftime('%H:%M')} | ↓ {local_sunset.strftime('%H:%M')} | Nautical: {local_dawn.strftime('%H:%M')}-{local_dusk.strftime('%H:%M')}"""
+↑ {local_sunrise.strftime('%H:%M')} | ↓ {local_sunset.strftime('%H:%M')} | Nautical: {local_dusk.strftime('%H:%M')}-{local_dawn.strftime('%H:%M')}"""
             self.sun_info_label.setText(sun_text)
             
             # Update moon position
