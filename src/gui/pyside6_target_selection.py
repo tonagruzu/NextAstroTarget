@@ -11,6 +11,7 @@ from PySide6.QtCore import Qt, Signal, Slot, QTimer, QPoint
 from PySide6.QtGui import QColor, QBrush, QFont, QAction, QPixmap, QCursor
 import logging
 import pandas as pd
+import numpy as np
 from typing import Dict, Any, List
 from datetime import datetime
 import requests
@@ -431,12 +432,12 @@ class PySide6TargetSelectionGUI(QWidget):
             dec_deg = self.hover_data.get('dec_degrees')
             astrobin_id = self.hover_data.get('astrobin_id')
             
-            # Try to get DSS image first
+            # Try to get sky survey image first
             if ra_deg is not None and dec_deg is not None:
                 try:
                     ra_float = float(ra_deg)
                     dec_float = float(dec_deg)
-                    pixmap = self.load_dss_image(ra_float, dec_float, object_name)
+                    pixmap, source = self.load_dss_image(ra_float, dec_float, object_name)
                     
                     if pixmap:
                         # Create tooltip HTML with image
@@ -444,14 +445,14 @@ class PySide6TargetSelectionGUI(QWidget):
                         <div style='background-color: #1e1e1e; padding: 10px; border: 2px solid #4A9EFF;'>
                             <h3 style='color: #4A9EFF; margin: 0 0 10px 0;'>🌌 {object_name}</h3>
                             <p style='color: #b0b0b0; margin: 0;'><img src='data:image/png;base64,{self.pixmap_to_base64(pixmap)}' /></p>
-                            <p style='color: #808080; font-size: 8pt; margin: 5px 0 0 0;'>🔭 Digitized Sky Survey</p>
+                            <p style='color: #808080; font-size: 8pt; margin: 5px 0 0 0;'>🔭 {source} Survey</p>
                         </div>
                         """
                         # For now, use simple text tooltip
                         # Qt doesn't support rich image tooltips easily, so show text
                         QToolTip.showText(
                             QCursor.pos(),
-                            f"🌌 {object_name}\n📍 RA: {ra_float:.2f}° Dec: {dec_float:.2f}°\n🔭 Image available",
+                            f"🌌 {object_name}\n📍 RA: {ra_float:.2f}° Dec: {dec_float:.2f}°\n🔭 {source} image available",
                             self.table
                         )
                         return
@@ -532,31 +533,80 @@ class PySide6TargetSelectionGUI(QWidget):
             self.logger.debug(f"Error checking transit time for object: {e}")
             return False
             
-    def load_dss_image(self, ra_deg: float, dec_deg: float, object_name: str) -> QPixmap:
-        """Load image from Digitized Sky Survey."""
-        cache_key = f"dss_{ra_deg:.3f}_{dec_deg:.3f}"
+    def load_dss_image(self, ra_deg: float, dec_deg: float, object_name: str) -> tuple:
+        """Load astronomical image from best available source (SDSS, then DSS fallback).
+        Returns: (QPixmap, source_name) where source_name is 'SDSS', 'DSS', or None
+        """
+        cache_key = f"sky_{ra_deg:.3f}_{dec_deg:.3f}"
         
-        # Check cache
+        # Check cache (stores tuple of (pixmap, source))
         if cache_key in self.image_cache:
-            return self.image_cache[cache_key]
-            
+            cached = self.image_cache[cache_key]
+            if cached is None:
+                return None, None
+            return cached
+        
+        # Try SDSS first (better quality, color images)
+        pixmap = self._try_load_sdss(ra_deg, dec_deg, object_name)
+        if pixmap and not pixmap.isNull():
+            result = (pixmap, 'SDSS')
+            self.image_cache[cache_key] = result
+            return result
+        
+        # Fallback to DSS if SDSS fails
+        pixmap = self._try_load_dss(ra_deg, dec_deg, object_name)
+        if pixmap and not pixmap.isNull():
+            result = (pixmap, 'DSS')
+            self.image_cache[cache_key] = result
+            return result
+        
+        # Cache failure to avoid repeated attempts
+        self.image_cache[cache_key] = None
+        return None, None
+    
+    def _try_load_sdss(self, ra_deg: float, dec_deg: float, object_name: str) -> QPixmap:
+        """Try to load image from Sloan Digital Sky Survey."""
         try:
-            # DSS URL with 12 arcmin field of view
-            dss_url = f"https://archive.stsci.edu/cgi-bin/dss_search?v=poss2ukstu_red&r={ra_deg:.6f}&d={dec_deg:.6f}&e=J2000&h=12.0&w=12.0&f=gif&c=none&fov=NONE&v3="
+            # SDSS SkyServer cutout service - provides color composite images
+            # Scale: 0.396 arcsec/pixel, width/height in pixels
+            # Using 512x512 pixels = ~3.4 arcmin field of view
+            width = 512
+            height = 512
+            scale = 0.4  # arcsec/pixel
             
-            self.logger.info(f"Fetching DSS image for {object_name}")
+            sdss_url = (
+                f"http://skyserver.sdss.org/dr17/SkyServerWS/ImgCutout/getjpeg"
+                f"?ra={ra_deg:.6f}&dec={dec_deg:.6f}"
+                f"&width={width}&height={height}&scale={scale}"
+            )
+            
+            self.logger.info(f"Fetching SDSS image for {object_name}")
             
             headers = {
                 'User-Agent': 'NextAstroTarget/2.0.0 (Astronomy Application; PySide6)',
-                'Accept': 'image/gif,image/*,*/*;q=0.8'
+                'Accept': 'image/jpeg,image/*,*/*'
             }
             
-            response = requests.get(dss_url, headers=headers, timeout=5)
+            response = requests.get(sdss_url, headers=headers, timeout=8)
             
-            if response.status_code == 200 and len(response.content) > 10000:
-                # Load and resize image
+            if response.status_code == 200 and len(response.content) > 5000:
+                # Load image
                 img = Image.open(BytesIO(response.content))
-                img.thumbnail((200, 200), Image.Resampling.LANCZOS)
+                
+                # Check if image is not just blank/black (SDSS returns black for no data)
+                # Convert to grayscale and check average brightness
+                img_gray = img.convert('L')
+                img_array = np.array(img_gray)
+                avg_brightness = np.mean(img_array)
+                
+                # If image is mostly black (avg < 10), SDSS has no data for this region
+                if avg_brightness < 10:
+                    self.logger.info(f"SDSS image too dark for {object_name}, likely no coverage")
+                    return None
+                
+                # Resize if needed
+                if img.size[0] > 400 or img.size[1] > 400:
+                    img.thumbnail((400, 400), Image.Resampling.LANCZOS)
                 
                 # Convert to QPixmap
                 img_bytes = BytesIO()
@@ -566,15 +616,52 @@ class PySide6TargetSelectionGUI(QWidget):
                 pixmap = QPixmap()
                 pixmap.loadFromData(img_bytes.read())
                 
-                # Cache the pixmap
-                self.image_cache[cache_key] = pixmap
+                self.logger.info(f"Successfully loaded SDSS color image for {object_name}")
+                return pixmap
+                
+        except Exception as e:
+            self.logger.debug(f"Failed to load SDSS image: {e}")
+            
+        return None
+    
+    def _try_load_dss(self, ra_deg: float, dec_deg: float, object_name: str) -> QPixmap:
+        """Fallback: Load image from Digitized Sky Survey."""
+        try:
+            # DSS2 Red survey with larger field of view for better context
+            # Using 15 arcmin field
+            dss_url = (
+                f"https://archive.stsci.edu/cgi-bin/dss_search"
+                f"?v=poss2ukstu_red&r={ra_deg:.6f}&d={dec_deg:.6f}"
+                f"&e=J2000&h=15.0&w=15.0&f=gif&c=none&fov=NONE&v3="
+            )
+            
+            self.logger.info(f"Fetching DSS image (fallback) for {object_name}")
+            
+            headers = {
+                'User-Agent': 'NextAstroTarget/2.0.0 (Astronomy Application; PySide6)',
+                'Accept': 'image/gif,image/*,*/*;q=0.8'
+            }
+            
+            response = requests.get(dss_url, headers=headers, timeout=8)
+            
+            if response.status_code == 200 and len(response.content) > 10000:
+                # Load and resize image
+                img = Image.open(BytesIO(response.content))
+                img.thumbnail((400, 400), Image.Resampling.LANCZOS)
+                
+                # Convert to QPixmap
+                img_bytes = BytesIO()
+                img.save(img_bytes, format='PNG')
+                img_bytes.seek(0)
+                
+                pixmap = QPixmap()
+                pixmap.loadFromData(img_bytes.read())
                 
                 self.logger.info(f"Successfully loaded DSS image for {object_name}")
                 return pixmap
                 
         except Exception as e:
             self.logger.debug(f"Failed to load DSS image: {e}")
-            self.image_cache[cache_key] = None
             
         return None
         
@@ -602,88 +689,116 @@ class PySide6TargetSelectionGUI(QWidget):
     
     def show_object_detail_dialog(self, obj_data: Dict):
         """Show detailed object information with DSS image preview."""
-        dialog = QDialog(self)
-        dialog.setWindowTitle(f"🌌 {obj_data.get('object_name', 'Object Details')}")
-        dialog.setMinimumSize(500, 600)
-        
-        layout = QVBoxLayout(dialog)
-        layout.setSpacing(10)
-        layout.setContentsMargins(15, 15, 15, 15)
-        
-        # Object name header
-        name_label = QLabel(f"<h2 style='color: #4A9EFF;'>{obj_data.get('object_name', 'Unknown')}</h2>")
-        layout.addWidget(name_label)
-        
-        # DSS Image
-        ra_deg = obj_data.get('ra_degrees')
-        dec_deg = obj_data.get('dec_degrees')
-        
-        if ra_deg is not None and dec_deg is not None:
+        try:
+            self.logger.info(f"Opening detail dialog for {obj_data.get('object_name', 'Unknown')}")
+            
+            dialog = QDialog(self)
+            dialog.setWindowTitle(f"🌌 {obj_data.get('object_name', 'Object Details')}")
+            dialog.setMinimumSize(500, 600)
+            
+            layout = QVBoxLayout(dialog)
+            layout.setSpacing(10)
+            layout.setContentsMargins(15, 15, 15, 15)
+            
+            # Object name header
+            name_label = QLabel(f"<h2 style='color: #4A9EFF;'>{obj_data.get('object_name', 'Unknown')}</h2>")
+            layout.addWidget(name_label)
+            
+            # DSS Image section
+            ra_deg = obj_data.get('ra_degrees')
+            dec_deg = obj_data.get('dec_degrees')
+            
+            if ra_deg is not None and dec_deg is not None:
+                try:
+                    ra_float = float(ra_deg)
+                    dec_float = float(dec_deg)
+                    
+                    self.logger.info(f"Loading sky survey image for coordinates: RA={ra_float}, Dec={dec_float}")
+                    
+                    # Load sky survey image (SDSS or DSS)
+                    pixmap, source = self.load_dss_image(ra_float, dec_float, obj_data.get('object_name', ''))
+                    
+                    if pixmap and not pixmap.isNull():
+                        self.logger.info(f"Sky survey image loaded successfully from {source}, size: {pixmap.width()}x{pixmap.height()}")
+                        
+                        image_label = QLabel()
+                        # Scale image to fit dialog while maintaining aspect ratio
+                        scaled_pixmap = pixmap.scaled(450, 450, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                        image_label.setPixmap(scaled_pixmap)
+                        image_label.setAlignment(Qt.AlignCenter)
+                        image_label.setStyleSheet("border: 2px solid #4A9EFF; background-color: #000; padding: 5px;")
+                        layout.addWidget(image_label)
+                        
+                        # Show source attribution
+                        if source == 'SDSS':
+                            caption_text = "🔭 Sloan Digital Sky Survey (SDSS) - Color Composite"
+                        else:
+                            caption_text = "🔭 Digitized Sky Survey (DSS) - Red Filter"
+                        
+                        caption = QLabel(caption_text)
+                        caption.setAlignment(Qt.AlignCenter)
+                        caption.setStyleSheet("color: #808080; font-size: 9pt;")
+                        layout.addWidget(caption)
+                    else:
+                        self.logger.warning(f"Sky survey image not available for {obj_data.get('object_name')}")
+                        no_image_label = QLabel("📷 No survey image available")
+                        no_image_label.setAlignment(Qt.AlignCenter)
+                        no_image_label.setStyleSheet("font-size: 11pt; padding: 20px; color: #808080;")
+                        layout.addWidget(no_image_label)
+                        
+                except (ValueError, TypeError) as e:
+                    self.logger.error(f"Error with coordinates: {e}")
+                    error_label = QLabel("⚠️ Invalid coordinates")
+                    error_label.setAlignment(Qt.AlignCenter)
+                    error_label.setStyleSheet("font-size: 11pt; padding: 20px; color: #ff6b6b;")
+                    layout.addWidget(error_label)
+            else:
+                no_coord_label = QLabel("📍 No coordinates available")
+                no_coord_label.setAlignment(Qt.AlignCenter)
+                no_coord_label.setStyleSheet("font-size: 11pt; padding: 20px; color: #808080;")
+                layout.addWidget(no_coord_label)
+            
+            # Object details
             try:
-                ra_float = float(ra_deg)
-                dec_float = float(dec_deg)
-                
-                # Show loading message
-                loading_label = QLabel("⏳ Loading DSS image...")
-                loading_label.setAlignment(Qt.AlignCenter)
-                loading_label.setStyleSheet("font-size: 12pt; padding: 20px;")
-                layout.addWidget(loading_label)
-                
-                # Load DSS image
-                pixmap = self.load_dss_image(ra_float, dec_float, obj_data.get('object_name', ''))
-                
-                if pixmap:
-                    # Replace loading message with image
-                    layout.removeWidget(loading_label)
-                    loading_label.deleteLater()
-                    
-                    image_label = QLabel()
-                    # Scale image to fit dialog while maintaining aspect ratio
-                    scaled_pixmap = pixmap.scaled(450, 450, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-                    image_label.setPixmap(scaled_pixmap)
-                    image_label.setAlignment(Qt.AlignCenter)
-                    image_label.setStyleSheet("border: 2px solid #4A9EFF; background-color: #000;")
-                    layout.addWidget(image_label)
-                    
-                    caption = QLabel("🔭 Digitized Sky Survey (DSS)")
-                    caption.setAlignment(Qt.AlignCenter)
-                    caption.setStyleSheet("color: #808080; font-size: 9pt;")
-                    layout.addWidget(caption)
+                # Safely parse rating
+                rating_value = obj_data.get('rating', '0')
+                if rating_value:
+                    rating_num = self._parse_rating(rating_value)
+                    rating_stars = '⭐' * int(rating_num) if rating_num > 0 else ''
                 else:
-                    layout.removeWidget(loading_label)
-                    loading_label.deleteLater()
-                    
-                    no_image_label = QLabel("📷 DSS image not available")
-                    no_image_label.setAlignment(Qt.AlignCenter)
-                    no_image_label.setStyleSheet("font-size: 11pt; padding: 20px; color: #808080;")
-                    layout.addWidget(no_image_label)
-                    
-            except (ValueError, TypeError) as e:
-                self.logger.debug(f"Invalid coordinates: {e}")
-        
-        # Object details
-        details_text = f"""
-        <div style='font-size: 11pt; line-height: 1.6;'>
-            <p><b>Type:</b> {obj_data.get('object_type', 'Unknown')}</p>
-            <p><b>Constellation:</b> {obj_data.get('constellation', 'Unknown')}</p>
-            <p><b>Size:</b> {obj_data.get('size_arcmin', 'Unknown')}' arcminutes</p>
-            <p><b>Rating:</b> {'⭐' * int(float(str(obj_data.get('rating', '0')).split()[0]))} {obj_data.get('rating', 'Unknown')}</p>
-            <p><b>RA:</b> {ra_deg:.4f}° ({obj_data.get('ra_hms', 'Unknown')})</p>
-            <p><b>Dec:</b> {dec_deg:.4f}° ({obj_data.get('dec_dms', 'Unknown')})</p>
-        </div>
-        """
-        
-        details_label = QLabel(details_text)
-        details_label.setWordWrap(True)
-        layout.addWidget(details_label)
-        
-        # Close button
-        close_btn = QPushButton("Close")
-        close_btn.setFixedHeight(32)
-        close_btn.clicked.connect(dialog.accept)
-        layout.addWidget(close_btn)
-        
-        dialog.exec_()
+                    rating_stars = ''
+                    rating_value = 'Unknown'
+                
+                details_text = f"""
+                <div style='font-size: 11pt; line-height: 1.6;'>
+                    <p><b>Type:</b> {obj_data.get('object_type', 'Unknown')}</p>
+                    <p><b>Constellation:</b> {obj_data.get('constellation', 'Unknown')}</p>
+                    <p><b>Size:</b> {obj_data.get('size_arcmin', 'Unknown')}' arcminutes</p>
+                    <p><b>Rating:</b> {rating_stars} {rating_value}</p>
+                    <p><b>RA:</b> {ra_deg if ra_deg else 'Unknown'} ({obj_data.get('ra_hms', 'Unknown')})</p>
+                    <p><b>Dec:</b> {dec_deg if dec_deg else 'Unknown'} ({obj_data.get('dec_dms', 'Unknown')})</p>
+                </div>
+                """
+                
+                details_label = QLabel(details_text)
+                details_label.setWordWrap(True)
+                layout.addWidget(details_label)
+            except Exception as e:
+                self.logger.error(f"Error formatting details: {e}")
+            
+            # Close button
+            close_btn = QPushButton("Close")
+            close_btn.setFixedHeight(32)
+            close_btn.setMinimumWidth(100)
+            close_btn.clicked.connect(dialog.accept)
+            layout.addWidget(close_btn)
+            
+            self.logger.info("Showing detail dialog")
+            dialog.exec_()
+            
+        except Exception as e:
+            self.logger.error(f"Error showing detail dialog: {e}", exc_info=True)
+            QMessageBox.warning(self, "Error", f"Could not show object details: {str(e)}")
                     
     @Slot(object)
     def show_context_menu(self, pos):
