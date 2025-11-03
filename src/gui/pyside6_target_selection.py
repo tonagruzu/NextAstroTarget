@@ -953,11 +953,18 @@ class PySide6TargetSelectionGUI(QWidget):
             size_max = filters.get('size_max', 9999)
             if size_min > 0 or size_max < 9999:
                 before_count = len(self.filtered_objects)
-                self.filtered_objects = [
-                    obj for obj in self.filtered_objects
-                    if obj.get('size_arcmin') and 
-                       size_min <= float(obj['size_arcmin']) <= size_max
-                ]
+                filtered_by_size = []
+                for obj in self.filtered_objects:
+                    size_val = obj.get('size_arcmin')
+                    if size_val is not None:
+                        try:
+                            size_float = float(size_val)
+                            if size_min <= size_float <= size_max:
+                                filtered_by_size.append(obj)
+                        except (ValueError, TypeError):
+                            # Skip objects with invalid size values
+                            pass
+                self.filtered_objects = filtered_by_size
                 self.logger.info(f"Size filter ({size_min}'-{size_max}'): {before_count} -> {len(self.filtered_objects)} objects")
                 
             # Apply transit time filter
@@ -974,6 +981,25 @@ class PySide6TargetSelectionGUI(QWidget):
                 
                 self.filtered_objects = filtered_by_transit
                 self.logger.info(f"Transit filter ({transit_start}-{transit_end}): {before_count} -> {len(self.filtered_objects)} objects")
+            
+            # Apply declination filter
+            dec_min = filters.get('dec_min', -90)
+            dec_max = filters.get('dec_max', 90)
+            if dec_min > -90 or dec_max < 90:
+                before_count = len(self.filtered_objects)
+                filtered_by_dec = []
+                for obj in self.filtered_objects:
+                    dec_val = obj.get('dec_degrees')
+                    if dec_val is not None:
+                        try:
+                            dec_float = float(dec_val)
+                            if dec_min <= dec_float <= dec_max:
+                                filtered_by_dec.append(obj)
+                        except (ValueError, TypeError):
+                            # Skip objects with invalid declination values
+                            pass
+                self.filtered_objects = filtered_by_dec
+                self.logger.info(f"Declination filter ({dec_min}° to {dec_max}°): {before_count} -> {len(self.filtered_objects)} objects")
                 
         except Exception as e:
             self.logger.error(f"Error applying filters: {e}", exc_info=True)

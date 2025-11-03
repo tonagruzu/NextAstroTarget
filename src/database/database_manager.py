@@ -277,6 +277,87 @@ class DatabaseManager:
     def get_connection(self) -> sqlite3.Connection:
         """Get a database connection."""
         return sqlite3.connect(self.db_path)
+    
+    def create_settings_table(self) -> None:
+        """Create settings table for persistent application settings."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS app_settings (
+                        key TEXT PRIMARY KEY,
+                        value TEXT NOT NULL
+                    )
+                """)
+                conn.commit()
+                self.logger.info("Settings table created successfully")
+        except Exception as e:
+            self.logger.error(f"Error creating settings table: {e}")
+    
+    def save_setting(self, key: str, value: str) -> bool:
+        """
+        Save a setting to the database.
+        
+        Args:
+            key: Setting key
+            value: Setting value (will be converted to string)
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    INSERT OR REPLACE INTO app_settings (key, value)
+                    VALUES (?, ?)
+                """, (key, str(value)))
+                conn.commit()
+                return True
+        except Exception as e:
+            self.logger.error(f"Error saving setting {key}: {e}")
+            return False
+    
+    def get_setting(self, key: str, default: Optional[str] = None) -> Optional[str]:
+        """
+        Get a setting from the database.
+        
+        Args:
+            key: Setting key
+            default: Default value if setting not found
+            
+        Returns:
+            Setting value or default
+        """
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT value FROM app_settings WHERE key = ?", (key,))
+                result = cursor.fetchone()
+                return result[0] if result else default
+        except Exception as e:
+            self.logger.error(f"Error getting setting {key}: {e}")
+            return default
+    
+    def delete_setting(self, key: str) -> bool:
+        """
+        Delete a setting from the database.
+        
+        Args:
+            key: Setting key
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM app_settings WHERE key = ?", (key,))
+                conn.commit()
+                return True
+        except Exception as e:
+            self.logger.error(f"Error deleting setting {key}: {e}")
+            return False
 
 
 if __name__ == "__main__":

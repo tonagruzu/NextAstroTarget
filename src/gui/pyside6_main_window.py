@@ -7,7 +7,7 @@ from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QPushButton, QLabel, QFrame, QSplitter, QGroupBox, QComboBox,
     QSpinBox, QDoubleSpinBox, QTimeEdit, QScrollArea, QStatusBar,
-    QMessageBox, QDockWidget
+    QMessageBox, QDockWidget, QLineEdit
 )
 from PySide6.QtCore import Qt, QTime, QTimer, Signal, Slot
 from PySide6.QtGui import QFont, QPalette, QColor, QIcon, QPainter, QBrush, QPen
@@ -166,6 +166,9 @@ class ModernMainWindow(QMainWindow):
         self.setup_modern_ui()
         self.apply_modern_stylesheet()
         
+        # Load persistent filter settings after UI is set up
+        self.load_persistent_settings()
+        
         # Update astronomical data
         self.update_astronomical_data()
         
@@ -299,19 +302,34 @@ class ModernMainWindow(QMainWindow):
         self.lon_spin.setDecimals(4)
         layout.addWidget(self.lon_spin, 0, 5)
         
+        # Address input (new row)
+        layout.addWidget(QLabel("Address:"), 1, 0)
+        self.address_edit = QLineEdit()
+        self.address_edit.setPlaceholderText("Enter address (e.g., Gdansk, Poland)")
+        self.address_edit.setMinimumWidth(300)
+        layout.addWidget(self.address_edit, 1, 1, 1, 3)
+        
+        # Geocode button
+        geocode_btn = QPushButton("🔍 Geocode")
+        geocode_btn.setFixedHeight(30)
+        geocode_btn.setMinimumWidth(100)
+        geocode_btn.clicked.connect(self.geocode_address)
+        geocode_btn.setToolTip("Convert address to coordinates using OpenStreetMap")
+        layout.addWidget(geocode_btn, 1, 4)
+        
         # Date/Time
-        layout.addWidget(QLabel("Observation Time:"), 1, 0)
+        layout.addWidget(QLabel("Observation Time:"), 2, 0)
         self.time_edit = QTimeEdit()
         self.time_edit.setTime(QTime.currentTime())
         self.time_edit.setDisplayFormat("HH:mm")
-        layout.addWidget(self.time_edit, 1, 1)
+        layout.addWidget(self.time_edit, 2, 1)
         
         # Apply button
         apply_btn = QPushButton("Apply Settings")
         apply_btn.setFixedHeight(30)
         apply_btn.setMinimumWidth(120)
         apply_btn.clicked.connect(self.apply_location_settings)
-        layout.addWidget(apply_btn, 1, 5)
+        layout.addWidget(apply_btn, 2, 5)
         
         parent_layout.addWidget(group)
         
@@ -448,6 +466,23 @@ class ModernMainWindow(QMainWindow):
         self.transit_end.setTime(QTime(23, 59))
         self.transit_end.editingFinished.connect(self.apply_all_filters)
         layout.addWidget(self.transit_end, row, 7)
+        row += 1
+        
+        # Declination range (new filter)
+        layout.addWidget(QLabel("Declination Range:"), row, 0)
+        self.dec_min = QSpinBox()
+        self.dec_min.setRange(-90, 90)
+        self.dec_min.setValue(-90)
+        self.dec_min.setSuffix("°")
+        self.dec_min.editingFinished.connect(self.apply_all_filters)
+        layout.addWidget(self.dec_min, row, 1)
+        layout.addWidget(QLabel("to"), row, 2)
+        self.dec_max = QSpinBox()
+        self.dec_max.setRange(-90, 90)
+        self.dec_max.setValue(90)
+        self.dec_max.setSuffix("°")
+        self.dec_max.editingFinished.connect(self.apply_all_filters)
+        layout.addWidget(self.dec_max, row, 3)
         row += 1
         
         # Apply filters button
@@ -646,6 +681,74 @@ class ModernMainWindow(QMainWindow):
             self.logger.info("Saved observatory config")
         except Exception as e:
             self.logger.error(f"Failed to save config: {e}")
+    
+    def load_persistent_settings(self):
+        """Load persistent filter and location settings from database."""
+        try:
+            # Ensure settings table exists
+            self.db_manager.create_settings_table()
+            
+            # Load size range
+            size_min = self.db_manager.get_setting('size_min')
+            if size_min is not None:
+                self.size_min.setValue(int(size_min))
+            
+            size_max = self.db_manager.get_setting('size_max')
+            if size_max is not None:
+                self.size_max.setValue(int(size_max))
+            
+            # Load declination range
+            dec_min = self.db_manager.get_setting('dec_min')
+            if dec_min is not None:
+                self.dec_min.setValue(int(dec_min))
+            
+            dec_max = self.db_manager.get_setting('dec_max')
+            if dec_max is not None:
+                self.dec_max.setValue(int(dec_max))
+            
+            # Load transit time
+            transit_start = self.db_manager.get_setting('transit_start')
+            if transit_start is not None:
+                time_parts = transit_start.split(':')
+                if len(time_parts) == 2:
+                    self.transit_start.setTime(QTime(int(time_parts[0]), int(time_parts[1])))
+            
+            transit_end = self.db_manager.get_setting('transit_end')
+            if transit_end is not None:
+                time_parts = transit_end.split(':')
+                if len(time_parts) == 2:
+                    self.transit_end.setTime(QTime(int(time_parts[0]), int(time_parts[1])))
+            
+            # Load observatory address
+            address = self.db_manager.get_setting('observatory_address')
+            if address is not None:
+                self.address_edit.setText(address)
+            
+            self.logger.info("Loaded persistent settings from database")
+        except Exception as e:
+            self.logger.error(f"Failed to load persistent settings: {e}", exc_info=True)
+    
+    def save_persistent_settings(self):
+        """Save persistent filter and location settings to database."""
+        try:
+            # Save size range
+            self.db_manager.save_setting('size_min', str(self.size_min.value()))
+            self.db_manager.save_setting('size_max', str(self.size_max.value()))
+            
+            # Save declination range
+            self.db_manager.save_setting('dec_min', str(self.dec_min.value()))
+            self.db_manager.save_setting('dec_max', str(self.dec_max.value()))
+            
+            # Save transit time
+            self.db_manager.save_setting('transit_start', self.transit_start.time().toString("HH:mm"))
+            self.db_manager.save_setting('transit_end', self.transit_end.time().toString("HH:mm"))
+            
+            # Save observatory address
+            self.db_manager.save_setting('observatory_address', self.address_edit.text())
+            
+            self.logger.info("Saved persistent settings to database")
+        except Exception as e:
+            self.logger.error(f"Failed to save persistent settings: {e}", exc_info=True)
             
     def check_database_and_navigate(self):
         """Check database and navigate to appropriate screen."""
@@ -785,6 +888,96 @@ class ModernMainWindow(QMainWindow):
                 self.current_screen.update_astronomical_calculations()
             except AttributeError:
                 pass
+    
+    @Slot()
+    def geocode_address(self):
+        """Geocode address to coordinates using OpenStreetMap Nominatim API."""
+        import requests
+        
+        address = self.address_edit.text().strip()
+        if not address:
+            QMessageBox.warning(self, "No Address", "Please enter an address to geocode.")
+            return
+        
+        try:
+            # Use Nominatim API with proper user agent
+            url = "https://nominatim.openstreetmap.org/search"
+            params = {
+                'q': address,
+                'format': 'json',
+                'limit': 1
+            }
+            headers = {
+                'User-Agent': 'NextAstroTarget/1.0'
+            }
+            
+            self.status_bar.showMessage("Geocoding address...")
+            response = requests.get(url, params=params, headers=headers, timeout=10)
+            response.raise_for_status()
+            
+            results = response.json()
+            
+            if not results:
+                QMessageBox.warning(
+                    self, 
+                    "Address Not Found", 
+                    f"Could not find coordinates for: {address}\n\n"
+                    "Try:\n"
+                    "- Adding more details (city, country)\n"
+                    "- Using different address format\n"
+                    "- Checking spelling"
+                )
+                self.status_bar.showMessage("Geocoding failed - address not found", 5000)
+                return
+            
+            # Get first result
+            result = results[0]
+            lat = float(result['lat'])
+            lon = float(result['lon'])
+            display_name = result.get('display_name', address)
+            
+            # Update spinboxes
+            self.lat_spin.setValue(lat)
+            self.lon_spin.setValue(lon)
+            
+            # Show success message
+            QMessageBox.information(
+                self,
+                "Geocoding Successful",
+                f"Location: {display_name}\n\n"
+                f"Latitude: {lat:.4f}°\n"
+                f"Longitude: {lon:.4f}°\n\n"
+                "Click 'Apply Settings' to save these coordinates."
+            )
+            
+            self.status_bar.showMessage(f"Geocoded: {display_name}", 5000)
+            self.logger.info(f"Geocoded '{address}' to ({lat:.4f}, {lon:.4f})")
+            
+        except requests.exceptions.Timeout:
+            QMessageBox.critical(
+                self, 
+                "Geocoding Timeout", 
+                "The geocoding service took too long to respond.\n"
+                "Please check your internet connection and try again."
+            )
+            self.status_bar.showMessage("Geocoding timed out", 5000)
+        except requests.exceptions.RequestException as e:
+            QMessageBox.critical(
+                self,
+                "Geocoding Error",
+                f"Failed to connect to geocoding service:\n{str(e)}\n\n"
+                "Please check your internet connection."
+            )
+            self.status_bar.showMessage("Geocoding failed - network error", 5000)
+            self.logger.error(f"Geocoding error: {e}")
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Geocoding Error",
+                f"An unexpected error occurred:\n{str(e)}"
+            )
+            self.status_bar.showMessage("Geocoding failed", 5000)
+            self.logger.error(f"Unexpected geocoding error: {e}", exc_info=True)
                 
     @Slot(str)
     def filter_by_rating(self, rating):
@@ -816,36 +1009,31 @@ class ModernMainWindow(QMainWindow):
                 'size_min': self.size_min.value(),
                 'size_max': self.size_max.value(),
                 'transit_start': self.transit_start.time().toString("HH:mm"),
-                'transit_end': self.transit_end.time().toString("HH:mm")
+                'transit_end': self.transit_end.time().toString("HH:mm"),
+                'dec_min': self.dec_min.value(),
+                'dec_max': self.dec_max.value()
             }
             self.current_screen.apply_filters(filters)
             
     @Slot()
     def clear_all_filters(self):
-        """Clear all active filters."""
-        # Reset UI - uncheck all buttons first
+        """Clear Rating and Type filters only. Size Range, Declination Range, and Transit Time remain intact."""
+        # Reset Rating filter - uncheck all buttons first
         for btn in self.rating_buttons.values():
             btn.setChecked(False)
         self.rating_buttons["All"].setChecked(True)
         
+        # Reset Type filter
         for btn in self.type_buttons.values():
             btn.setChecked(False)
         self.type_buttons["All"].setChecked(True)
         
-        self.size_min.setValue(0)
-        self.size_max.setValue(9999)
-        self.transit_start.setTime(QTime(0, 0))
-        self.transit_end.setTime(QTime(23, 59))
+        # DO NOT reset Size Range, Declination Range, or Transit Time
+        # These filters remain as configured by the user
         
-        # Clear active filters
-        self.active_filters = {
-            'declination': False,
-            'size': False,
-            'transit': False,
-            'rating': None,
-            'catalog': None,
-            'type': None
-        }
+        # Clear only rating and type in active filters
+        self.active_filters['rating'] = None
+        self.active_filters['type'] = None
         
         # Apply cleared filters
         self.apply_all_filters()
@@ -854,4 +1042,5 @@ class ModernMainWindow(QMainWindow):
         """Handle window close event."""
         self.logger.info("Application closing")
         self.save_observatory_config()
+        self.save_persistent_settings()
         event.accept()
