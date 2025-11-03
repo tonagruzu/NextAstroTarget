@@ -14,32 +14,31 @@ def download_moon_phases():
     cache_dir = Path('data/moon_cache')
     cache_dir.mkdir(parents=True, exist_ok=True)
     
-    # NASA SVS moon phase images
-    base_url = "https://svs.gsfc.nasa.gov/vis/a000000/a004900/a004955/frames/730x730_1x1_30p/"
+    # NASA SVS moon phase images - 2024 Moon Phase and Libration
+    # We'll download frames from a complete lunar cycle starting from a new moon
+    # Frame 0240 = January 11, 2024 00:00 UTC (New Moon)
+    base_url = "https://svs.gsfc.nasa.gov/vis/a000000/a005000/a005048/frames/730x730_1x1_30p/moon."
     
     print("=" * 60)
     print("Downloading NASA Moon Phase Images")
     print("=" * 60)
     print(f"\nTarget directory: {cache_dir.absolute()}\n")
     
+    # Calculate frame numbers for each day of lunar cycle
+    start_frame = 240  # January 11, 2024 (New Moon)
+    hours_per_day = 24
+    
     success_count = 0
-    for day in range(30):
-        # NASA SVS has frames 1-29, no frame 0
-        if day == 0:
-            print(f"⊘ Day {day:2d}: Skipping (no frame 0 in NASA set)")
-            continue
-            
-        image_url = f"{base_url}moon.{day:04d}.jpg"
+    for day in range(1, 30):  # Days 1-29
+        hours_offset = (day - 1) * hours_per_day
+        frame_num = start_frame + hours_offset
+        
+        image_url = f"{base_url}{frame_num:04d}.jpg"
         cache_file = cache_dir / f"moon_day_{day:02d}.jpg"
         
-        # Skip if already exists
-        if cache_file.exists():
-            print(f"✓ Day {day:2d}: Already cached")
-            success_count += 1
-            continue
-        
+        # Always re-download to get correct images
         try:
-            print(f"⬇ Day {day:2d}: Downloading...", end=" ", flush=True)
+            print(f"⬇ Day {day:2d} (frame {frame_num:04d}): Downloading...", end=" ", flush=True)
             response = requests.get(image_url, timeout=10)
             response.raise_for_status()
             

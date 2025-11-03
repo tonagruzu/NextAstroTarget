@@ -55,18 +55,25 @@ class MoonPhaseWidget(QWidget):
         try:
             import requests
             
-            # Calculate lunar day (0-29) from cycle position
+            # Get cycle position (0.0 = new moon, 0.5 = full moon, 1.0 = new moon)
             cycle_position = self.phase_data.get('cycle_position', 0)
-            lunar_day = int(cycle_position * 29.53)  # Lunar month is ~29.53 days
+            
+            # Map cycle_position (0-1) to frame number (1-29)
+            # Frame 1 = cycle 0.000 (new moon)
+            # Frame 15 = cycle 0.500 (full moon)
+            # Frame 29 = cycle 1.000 (back to new moon)
+            # Formula: frame = round(cycle * 28) + 1
+            frame_num = round(cycle_position * 28) + 1
+            frame_num = max(1, min(29, frame_num))  # Clamp to valid range 1-29
             
             # Check memory cache first
-            if lunar_day in self._moon_cache:
-                self.moon_pixmap = self._moon_cache[lunar_day]
-                self.logger.debug(f"Loaded moon image for day {lunar_day} from memory cache")
+            if frame_num in self._moon_cache:
+                self.moon_pixmap = self._moon_cache[frame_num]
+                self.logger.debug(f"Loaded moon image for frame {frame_num} from memory cache")
                 return
             
-            # Check disk cache
-            cache_file = self.cache_dir / f"moon_day_{lunar_day:02d}.jpg"
+            # Check disk cache - use existing moon_day_XX.jpg files (frames 1-29)
+            cache_file = self.cache_dir / f"moon_day_{frame_num:02d}.jpg"
             if cache_file.exists():
                 self.moon_pixmap = QPixmap(str(cache_file))
                 if not self.moon_pixmap.isNull():
@@ -76,47 +83,22 @@ class MoonPhaseWidget(QWidget):
                         Qt.KeepAspectRatio,
                         Qt.SmoothTransformation
                     )
-                    self._moon_cache[lunar_day] = self.moon_pixmap
-                    self.logger.debug(f"Loaded moon image for day {lunar_day} from disk cache")
+                    self._moon_cache[frame_num] = self.moon_pixmap
+                    self.logger.info(f"Loaded moon image for frame {frame_num} from disk cache")
                     return
-            
-            # NASA SVS moon phase images (frames 1-29, no frame 0)
-            base_url = "https://svs.gsfc.nasa.gov/vis/a000000/a004900/a004955/frames/730x730_1x1_30p/"
-            
-            # Map lunar day to image (1-29, handle day 0 as day 1)
-            image_num = max(1, lunar_day % 30)  # SVS has frames 1-29
-            image_url = f"{base_url}moon.{image_num:04d}.jpg"
-            
-            self.logger.debug(f"Downloading moon image for day {lunar_day}: {image_url}")
-            
-            # Try to load from URL with timeout
-            response = requests.get(image_url, timeout=5)
-            response.raise_for_status()
-            
-            # Load image from bytes
-            image = QImage()
-            if image.loadFromData(response.content):
-                # Save to disk cache
-                with open(cache_file, 'wb') as f:
-                    f.write(response.content)
-                
-                # Scale to larger size (110x110 to fit in 120x150 widget)
-                self.moon_pixmap = QPixmap.fromImage(image).scaled(
-                    110, 110, 
-                    Qt.KeepAspectRatio, 
-                    Qt.SmoothTransformation
-                )
-                
-                # Store in memory cache
-                self._moon_cache[lunar_day] = self.moon_pixmap
-                
-                self.logger.info(f"Downloaded and cached real moon phase image for lunar day {lunar_day}")
+                else:
+                    self.logger.warning(f"Cached file exists but failed to load: {cache_file}")
             else:
-                self.logger.warning("Failed to load moon image data")
-                self._draw_fallback_graphic()
+                self.logger.warning(f"Moon image file not found: {cache_file}")
+            
+            # If we get here, file doesn't exist or failed to load - use fallback
+            self.logger.info("Using fallback graphic for moon phase")
+            self._draw_fallback_graphic()
                 
         except Exception as e:
-            self.logger.warning(f"Failed to load moon image: {e}, using fallback graphic")
+            self.logger.warning(f"Failed to load moon image: {e}")
+            # Use fallback on exception
+            self.logger.info("Using fallback graphic for moon phase")
             self._draw_fallback_graphic()
     
     def _draw_fallback_graphic(self):
