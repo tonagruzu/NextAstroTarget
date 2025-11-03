@@ -606,9 +606,12 @@ class ModernMainWindow(QMainWindow):
                     self.observatory.update({
                         'latitude': config.getfloat('Observatory', 'latitude', fallback=40.0),
                         'longitude': config.getfloat('Observatory', 'longitude', fallback=-75.0),
-                        'elevation': config.getfloat('Observatory', 'elevation', fallback=100.0)
+                        'elevation': config.getfloat('Observatory', 'elevation', fallback=100.0),
+                        'gmt_offset': config.getfloat('Observatory', 'gmt_offset', fallback=0.0),
+                        'dst_active': config.getboolean('Observatory', 'dst_active', fallback=False),
+                        'timezone': config.get('Observatory', 'timezone', fallback='UTC')
                     })
-                    self.logger.info(f"Loaded observatory config: {self.observatory['latitude']}, {self.observatory['longitude']}")
+                    self.logger.info(f"Loaded observatory config: {self.observatory['latitude']}, {self.observatory['longitude']}, GMT offset: {self.observatory['gmt_offset']}, DST: {self.observatory['dst_active']}")
         except Exception as e:
             self.logger.error(f"Failed to load config: {e}")
             
@@ -627,7 +630,10 @@ class ModernMainWindow(QMainWindow):
             config['Observatory'].update({
                 'latitude': str(self.observatory['latitude']),
                 'longitude': str(self.observatory['longitude']),
-                'elevation': str(self.observatory['elevation'])
+                'elevation': str(self.observatory['elevation']),
+                'gmt_offset': str(self.observatory.get('gmt_offset', 0.0)),
+                'dst_active': str(self.observatory.get('dst_active', False)),
+                'timezone': str(self.observatory.get('timezone', 'UTC'))
             })
             
             with open(config_path, 'w') as f:
