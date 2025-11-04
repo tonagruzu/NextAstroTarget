@@ -182,6 +182,8 @@ class PySide6TargetSelectionGUI(QWidget):
                     [Unnamed: 4] as subtype,
                     [Unnamed: 5] as classification,
                     [Unnamed: 6] as size_arcmin,
+                    [Unnamed: 7] as distance,
+                    [Unnamed: 8] as diameter,
                     [Unnamed: 9] as rating,
                     [Sun] as ra_raw,
                     [Unnamed: 12] as ra_degrees,
@@ -883,7 +885,54 @@ class PySide6TargetSelectionGUI(QWidget):
             
             # Notes section (if available)
             notes = obj_data.get('notes', '')
+            distance = obj_data.get('distance', '')
+            diameter = obj_data.get('diameter', '')
+            object_type = obj_data.get('object_type', '')
+            
+            # Determine if object is a galaxy
+            is_galaxy = object_type and str(object_type).strip().lower() == 'gal'
+            
+            # Build extended notes with distance and diameter
+            extended_notes = []
+            
+            # Add distance if available
+            distance_str = str(distance).strip().lower()
+            if distance and distance_str and distance_str not in ['nan', 'none', '']:
+                # Check if distance is unknown (marked as 'u')
+                if distance_str == 'u':
+                    extended_notes.append(f"🌌 Distance: Unknown")
+                else:
+                    try:
+                        dist_val = float(distance)
+                        if is_galaxy:
+                            # Galaxies: distance in Millions of Light Years (Mly)
+                            extended_notes.append(f"🌌 Distance: {dist_val:,.2f} Mly")
+                        else:
+                            # Other objects: distance in Light Years (ly)
+                            extended_notes.append(f"🌌 Distance: {dist_val:,.0f} ly")
+                    except (ValueError, TypeError):
+                        pass
+            
+            # Add diameter if available
+            diameter_str = str(diameter).strip().lower()
+            if diameter and diameter_str and diameter_str not in ['nan', 'none', '', 'u']:
+                try:
+                    diam_val = float(diameter)
+                    if is_galaxy:
+                        # Galaxies: diameter in thousands of light years (kly)
+                        extended_notes.append(f"📏 Physical Size: {diam_val:,.1f} kly")
+                    else:
+                        # Other objects: diameter in light years (ly)
+                        extended_notes.append(f"📏 Physical Size: {diam_val:,.1f} ly")
+                except (ValueError, TypeError):
+                    pass
+            
+            # Add original notes
             if notes and str(notes).strip() and str(notes).strip().lower() != 'nan':
+                extended_notes.append(str(notes))
+            
+            # Display notes section if there's any content
+            if extended_notes:
                 notes_group = QGroupBox("📝 Notes")
                 notes_group.setStyleSheet("""
                     QGroupBox {
@@ -902,7 +951,7 @@ class PySide6TargetSelectionGUI(QWidget):
                     }
                 """)
                 notes_layout = QVBoxLayout(notes_group)
-                notes_label = QLabel(str(notes))
+                notes_label = QLabel('\n'.join(extended_notes))
                 notes_label.setWordWrap(True)
                 notes_label.setStyleSheet("color: #e0e0e0; font-size: 10pt; padding: 5px;")
                 notes_layout.addWidget(notes_label)
