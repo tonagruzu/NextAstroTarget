@@ -352,6 +352,9 @@ class ModernMainWindow(QMainWindow):
             btn.setMinimumWidth(110)
             header_layout.addWidget(btn)
         
+        # Connect help button
+        self.help_btn.clicked.connect(self.show_help_dialog)
+        
         parent_layout.addWidget(header_frame)
         
     def setup_timing_location(self, parent_layout):
@@ -1305,6 +1308,307 @@ class ModernMainWindow(QMainWindow):
         
         # Apply cleared filters
         self.apply_all_filters()
+    
+    @Slot()
+    def show_help_dialog(self):
+        """Show comprehensive help dialog with attractive formatting."""
+        from PySide6.QtWidgets import QDialog, QTextBrowser, QVBoxLayout, QDialogButtonBox
+        from PySide6.QtCore import QSize
+        
+        # Create dialog
+        dialog = QDialog(self)
+        dialog.setWindowTitle("NextAstroTarget - User Guide")
+        dialog.setMinimumSize(QSize(900, 700))
+        
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Create text browser for scrollable rich text content
+        browser = QTextBrowser(dialog)
+        browser.setOpenExternalLinks(False)
+        
+        # Set attractive HTML content with comprehensive help
+        help_html = """
+        <html>
+        <head>
+            <style>
+                body {
+                    font-family: 'Segoe UI', Arial, sans-serif;
+                    background-color: #1e1e1e;
+                    color: #e0e0e0;
+                    margin: 20px;
+                    line-height: 1.6;
+                }
+                h1 {
+                    color: #4A9EFF;
+                    border-bottom: 3px solid #4A9EFF;
+                    padding-bottom: 10px;
+                    margin-top: 0;
+                    font-size: 28px;
+                }
+                h2 {
+                    color: #FF9A3D;
+                    margin-top: 25px;
+                    margin-bottom: 15px;
+                    font-size: 20px;
+                    border-left: 4px solid #FF9A3D;
+                    padding-left: 10px;
+                }
+                h3 {
+                    color: #66D9EF;
+                    margin-top: 15px;
+                    margin-bottom: 10px;
+                    font-size: 16px;
+                }
+                p {
+                    margin: 10px 0;
+                }
+                ul {
+                    margin: 10px 0;
+                    padding-left: 25px;
+                }
+                li {
+                    margin: 5px 0;
+                }
+                .section {
+                    background-color: #252525;
+                    padding: 15px;
+                    border-radius: 8px;
+                    margin: 15px 0;
+                    border-left: 4px solid #4A9EFF;
+                }
+                .tip {
+                    background-color: #2a3a2a;
+                    padding: 12px;
+                    border-radius: 6px;
+                    margin: 10px 0;
+                    border-left: 4px solid #66D966;
+                }
+                .warning {
+                    background-color: #3a2a2a;
+                    padding: 12px;
+                    border-radius: 6px;
+                    margin: 10px 0;
+                    border-left: 4px solid #FF6666;
+                }
+                .code {
+                    background-color: #2d2d2d;
+                    padding: 3px 8px;
+                    border-radius: 3px;
+                    font-family: 'Consolas', monospace;
+                    color: #A6E22E;
+                }
+                table {
+                    border-collapse: collapse;
+                    width: 100%;
+                    margin: 15px 0;
+                }
+                th {
+                    background-color: #2d2d2d;
+                    color: #4A9EFF;
+                    padding: 10px;
+                    text-align: left;
+                    border-bottom: 2px solid #4A9EFF;
+                }
+                td {
+                    padding: 8px;
+                    border-bottom: 1px solid #3a3a3a;
+                }
+                tr:hover {
+                    background-color: #2a2a2a;
+                }
+                .emoji {
+                    font-size: 20px;
+                }
+            </style>
+        </head>
+        <body>
+            <h1>🔭 NextAstroTarget User Guide</h1>
+            <p>Welcome to NextAstroTarget - your comprehensive tool for planning deep sky imaging sessions!</p>
+            
+            <div class="section">
+                <h2><span class="emoji">📍</span> Observatory & Time Settings</h2>
+                <p>Configure your observing location and time to get accurate astronomical data:</p>
+                
+                <h3>Location Settings</h3>
+                <ul>
+                    <li><strong>Location:</strong> Select a predefined location or enter custom coordinates</li>
+                    <li><strong>Latitude/Longitude:</strong> Enter your precise location (North/East are positive)</li>
+                    <li><strong>Address:</strong> Enter an address and click "Geocode Address" to auto-fill coordinates</li>
+                    <li><strong>GMT Offset:</strong> Hours offset from UTC (negative for west of Greenwich)</li>
+                </ul>
+                
+                <h3>Date & Time Controls</h3>
+                <ul>
+                    <li><strong>Date Picker:</strong> Select the observation date</li>
+                    <li><strong>Time Picker:</strong> Set the observation time (24-hour format)</li>
+                    <li><strong>"Now" Button:</strong> Instantly set to current date and time</li>
+                    <li><strong>"Sunset" Button:</strong> Set time to local sunset (accounts for DST)</li>
+                </ul>
+                
+                <div class="tip">
+                    <strong>💡 Tip:</strong> Use the "Sunset" button to quickly plan evening sessions!
+                </div>
+            </div>
+            
+            <div class="section">
+                <h2><span class="emoji">🌙</span> Astronomical Data Display</h2>
+                
+                <h3>Sun Data</h3>
+                <p>View sunrise, sunset, and twilight times for your location and selected date.</p>
+                
+                <h3>Moon Data</h3>
+                <p>See current moon phase, illumination percentage, and a realistic moon phase visualization. 
+                The moon phase image accurately represents the current lunar appearance.</p>
+                
+                <h3>Weather Forecast</h3>
+                <p>Astronomical seeing conditions forecast powered by ClearOutside.com showing:</p>
+                <ul>
+                    <li>Cloud cover predictions</li>
+                    <li>Transparency (atmospheric clarity)</li>
+                    <li>Seeing quality</li>
+                    <li>Wind and temperature</li>
+                </ul>
+            </div>
+            
+            <div class="section">
+                <h2><span class="emoji">🎯</span> Target Selection & Filtering</h2>
+                
+                <h3>Filter by Rating</h3>
+                <table>
+                    <tr><th>Rating</th><th>Description</th></tr>
+                    <tr><td>⭐⭐⭐⭐⭐ (5)</td><td>Showcase Objects - Top 2% (Best imaging targets)</td></tr>
+                    <tr><td>⭐⭐⭐⭐ (4+)</td><td>Excellent - Top 10%</td></tr>
+                    <tr><td>⭐⭐⭐ (3+)</td><td>Good - Top 25%</td></tr>
+                    <tr><td>⭐⭐ (2+)</td><td>Average - Majority of objects</td></tr>
+                    <tr><td>⭐ (1+)</td><td>All rated objects</td></tr>
+                </table>
+                
+                <h3>Filter by Object Type</h3>
+                <ul>
+                    <li><strong>Galaxies:</strong> Distant galactic systems</li>
+                    <li><strong>Nebulae:</strong> Gas and dust clouds (emission, reflection, planetary, SNR)</li>
+                    <li><strong>Clusters:</strong> Star clusters (open and globular)</li>
+                    <li><strong>All:</strong> Show all object types</li>
+                </ul>
+                
+                <h3>Size Range Filter</h3>
+                <p>Filter objects by apparent size in arc-minutes (useful for matching your telescope's field of view).</p>
+                <ul>
+                    <li><strong>Min Size:</strong> Minimum apparent size in arcminutes</li>
+                    <li><strong>Max Size:</strong> Maximum apparent size in arcminutes</li>
+                </ul>
+                <div class="tip">
+                    <strong>💡 Reference:</strong> Full Moon = 31 arcmin, Jupiter ≈ 0.6 arcmin
+                </div>
+                
+                <h3>Declination Range</h3>
+                <p>Limit objects to those within your observable declination range:</p>
+                <ul>
+                    <li><strong>Min Dec:</strong> Southern limit (based on your latitude and horizon obstructions)</li>
+                    <li><strong>Max Dec:</strong> Northern limit (typically +90° for northern observers)</li>
+                </ul>
+                
+                <h3>Transit Time Window</h3>
+                <p>Filter objects that transit (reach maximum altitude) within a specific time window during the night.</p>
+                <ul>
+                    <li><strong>Start Time:</strong> Beginning of imaging window</li>
+                    <li><strong>End Time:</strong> End of imaging window</li>
+                </ul>
+            </div>
+            
+            <div class="section">
+                <h2><span class="emoji">📊</span> Object Information</h2>
+                
+                <h3>Object Card Details</h3>
+                <p>Double-click any object to view comprehensive information:</p>
+                <ul>
+                    <li><strong>Basic Info:</strong> Name, type, subtype, constellation, nickname</li>
+                    <li><strong>Coordinates:</strong> Right Ascension (RA) and Declination (Dec)</li>
+                    <li><strong>Physical Data:</strong>
+                        <ul>
+                            <li>Distance: Galaxies in Mly (millions of light years), others in ly</li>
+                            <li>Physical Size: Galaxies in kly (thousands of light years), others in ly</li>
+                            <li>Apparent Size: Angular size in arcminutes</li>
+                        </ul>
+                    </li>
+                    <li><strong>Observing Info:</strong> Magnitude, transit altitude, best viewing months</li>
+                    <li><strong>Sky Survey Image:</strong> Real astronomical image from SDSS or DSS</li>
+                    <li><strong>Notes:</strong> Description and interesting facts about the object</li>
+                </ul>
+                
+                <h3>Understanding Distance & Size</h3>
+                <table>
+                    <tr><th>Object Type</th><th>Distance Units</th><th>Size Units</th></tr>
+                    <tr><td>Galaxies</td><td>Mly (millions of ly)</td><td>kly (thousands of ly)</td></tr>
+                    <tr><td>Nebulae & Clusters</td><td>ly (light years)</td><td>ly (light years)</td></tr>
+                </table>
+                <p><span class="code">u</span> indicates unknown distance/size</p>
+            </div>
+            
+            <div class="section">
+                <h2><span class="emoji">⚙️</span> Tips & Best Practices</h2>
+                
+                <div class="tip">
+                    <h3>Planning Your Session</h3>
+                    <ul>
+                        <li>Set your location accurately for correct rise/set times</li>
+                        <li>Use the transit time filter to find objects at their highest altitude</li>
+                        <li>Check moon phase and plan narrowband imaging during bright moon</li>
+                        <li>Filter by rating to focus on the best targets first</li>
+                    </ul>
+                </div>
+                
+                <div class="tip">
+                    <h3>Declination Guidelines</h3>
+                    <ul>
+                        <li>Objects near zenith (directly overhead) have least atmospheric distortion</li>
+                        <li>Objects below 30° altitude show significant atmospheric effects</li>
+                        <li>Adjust Dec Min based on your southern horizon obstructions</li>
+                    </ul>
+                </div>
+                
+                <div class="warning">
+                    <h3>⚠️ Important Notes</h3>
+                    <ul>
+                        <li>DST setting affects sunset and twilight time calculations</li>
+                        <li>Transit times assume meridian crossing at midnight (1 AM during DST)</li>
+                        <li>Weather data requires internet connection</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="section">
+                <h2><span class="emoji">🔄</span> Button Actions</h2>
+                <ul>
+                    <li><strong>Apply Settings:</strong> Save location changes and recalculate astronomical data</li>
+                    <li><strong>Apply Filters:</strong> Refresh target list with current filter settings</li>
+                    <li><strong>Clear Filters:</strong> Reset rating and type filters (size/dec/transit remain)</li>
+                    <li><strong>Geocode Address:</strong> Convert address to coordinates automatically</li>
+                    <li><strong>Refresh Data:</strong> Reload weather and astronomical information</li>
+                </ul>
+            </div>
+            
+            <p style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 2px solid #3a3a3a;">
+                <strong>Happy Observing! 🌟</strong><br>
+                <span style="color: #808080; font-size: 12px;">
+                    Based on the Immersive Deep Sky Compendium database
+                </span>
+            </p>
+        </body>
+        </html>
+        """
+        
+        browser.setHtml(help_html)
+        layout.addWidget(browser)
+        
+        # Add close button
+        button_box = QDialogButtonBox(QDialogButtonBox.Close)
+        button_box.rejected.connect(dialog.close)
+        layout.addWidget(button_box)
+        
+        # Show dialog
+        dialog.exec()
         
     def closeEvent(self, event):
         """Handle window close event."""
