@@ -67,14 +67,19 @@ class PySide6TargetSelectionGUI(QWidget):
         self.search_edit = QLineEdit()
         self.search_edit.setPlaceholderText("Type object name, catalog number (M31, NGC2244)...")
         self.search_edit.textChanged.connect(self.on_search_changed)
+        # Make search field much shorter - max 400px (about half the typical width)
+        self.search_edit.setMaximumWidth(400)
         search_layout.addWidget(search_label)
         search_layout.addWidget(self.search_edit)
         
-        # Clear button
+        # Clear button - close to the search field
         clear_search_btn = QPushButton("✖ Clear")
         clear_search_btn.setMaximumWidth(80)
         clear_search_btn.clicked.connect(self.clear_search)
         search_layout.addWidget(clear_search_btn)
+        
+        # Add spacer to push everything to the left
+        search_layout.addStretch()
         
         layout.addLayout(search_layout)
         
@@ -829,6 +834,30 @@ class PySide6TargetSelectionGUI(QWidget):
             name_label = QLabel(f"<h2 style='color: #4A9EFF;'>{obj_data.get('object_name', 'Unknown')}</h2>")
             layout.addWidget(name_label)
             
+            # Editable Nick field
+            nick_layout = QHBoxLayout()
+            nick_label = QLabel("<b>Nickname:</b>")
+            nick_label.setStyleSheet("color: #e0e0e0; font-size: 10pt;")
+            nick_edit = QLineEdit()
+            nick_edit.setPlaceholderText("Enter a custom nickname...")
+            nick_edit.setText(obj_data.get('nick', ''))
+            nick_edit.setStyleSheet("""
+                QLineEdit {
+                    background-color: #2a2a2a;
+                    color: #e0e0e0;
+                    border: 1px solid #4A9EFF;
+                    border-radius: 4px;
+                    padding: 5px;
+                    font-size: 10pt;
+                }
+                QLineEdit:focus {
+                    border: 2px solid #4A9EFF;
+                }
+            """)
+            nick_layout.addWidget(nick_label)
+            nick_layout.addWidget(nick_edit, 1)
+            layout.addLayout(nick_layout)
+            
             # DSS Image section
             ra_deg = obj_data.get('ra_degrees')
             dec_deg = obj_data.get('dec_degrees')
@@ -1018,7 +1047,42 @@ class PySide6TargetSelectionGUI(QWidget):
             close_btn = QPushButton("Close")
             close_btn.setFixedHeight(32)
             close_btn.setMinimumWidth(100)
-            close_btn.clicked.connect(dialog.accept)
+            
+            def save_and_close():
+                """Save nick field and close dialog."""
+                new_nick = nick_edit.text().strip()
+                old_nick = obj_data.get('nick', '')
+                
+                # Only update if nick has changed
+                if new_nick != old_nick:
+                    object_name = obj_data.get('object_name', '')
+                    if self.db_manager.update_nick(object_name, new_nick):
+                        # Update the object data
+                        obj_data['nick'] = new_nick
+                        
+                        # Update in all_objects list
+                        for obj in self.all_objects:
+                            if obj.get('object_name') == object_name:
+                                obj['nick'] = new_nick
+                                break
+                        
+                        # Update in filtered_objects list
+                        for obj in self.filtered_objects:
+                            if obj.get('object_name') == object_name:
+                                obj['nick'] = new_nick
+                                break
+                        
+                        # Refresh the table display to show updated nick
+                        self.update_table_display()
+                        
+                        self.logger.info(f"Successfully updated nick for '{object_name}' to '{new_nick}'")
+                    else:
+                        QMessageBox.warning(dialog, "Error", "Failed to save nickname to database.")
+                        return
+                
+                dialog.accept()
+            
+            close_btn.clicked.connect(save_and_close)
             buttons_layout.addWidget(close_btn)
             
             layout.addLayout(buttons_layout)

@@ -191,6 +191,33 @@ class DatabaseManager:
         
         return df
     
+    def update_nick(self, object_name: str, nick: str) -> bool:
+        """
+        Update the nick field for a specific object.
+        
+        Args:
+            object_name: The name of the object to update
+            nick: The new nickname value
+            
+        Returns:
+            bool: True if update successful, False otherwise
+        """
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """UPDATE Main 
+                       SET [Unnamed: 16] = ? 
+                       WHERE [Imm Deep Sky Compendium -  2023 - 4th Edition] = ?""",
+                    (nick, object_name)
+                )
+                conn.commit()
+                self.logger.info(f"Updated nick for '{object_name}' to '{nick}'")
+                return True
+        except Exception as e:
+            self.logger.error(f"Error updating nick for '{object_name}': {e}")
+            return False
+    
     def _create_indexes(self, conn: sqlite3.Connection):
         """Create indexes for better query performance."""
         try:

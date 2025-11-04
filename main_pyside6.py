@@ -119,7 +119,8 @@ class NextAstroTargetApp:
         screen_height = screen_geometry.height()
         
         # Calculate optimal window dimensions (85% of screen size)
-        window_width = min(int(screen_width * 0.85), 1800)
+        # Increased width by 20%: 1800 * 1.2 = 2160
+        window_width = min(int(screen_width * 0.85), 2160)
         window_height = min(int(screen_height * 0.90), 1200)
         
         # Set minimum size

@@ -271,10 +271,10 @@ class ModernMainWindow(QMainWindow):
         # Add header
         self.setup_header(top_layout)
         
-        # Create horizontal splitter for Observatory and Weather sections
+        # Create horizontal splitter for three sections
         top_horizontal_splitter = QSplitter(Qt.Horizontal)
         
-        # Left side: Observatory (narrowed by 50%)
+        # Left side: Observatory + Sun & Moon (narrowed)
         left_widget = QWidget()
         left_layout = QVBoxLayout(left_widget)
         left_layout.setContentsMargins(0, 0, 0, 0)
@@ -283,14 +283,21 @@ class ModernMainWindow(QMainWindow):
         self.setup_sun_moon_info_inline(left_layout)
         top_horizontal_splitter.addWidget(left_widget)
         
+        # Middle: Target Filters
+        middle_widget = QWidget()
+        middle_layout = QVBoxLayout(middle_widget)
+        middle_layout.setContentsMargins(0, 0, 0, 0)
+        middle_layout.setSpacing(5)
+        self.setup_filtering_controls(middle_layout)
+        top_horizontal_splitter.addWidget(middle_widget)
+        
         # Right side: Weather (taller, using vertical space)
         self.setup_weather_info_inline(top_horizontal_splitter)
         
-        # Set splitter proportions: Observatory/Sun+Moon 50%, Weather 50%
-        top_horizontal_splitter.setSizes([600, 600])
+        # Set splitter proportions: Observatory/Sun+Moon 30%, Filters 35%, Weather 35%
+        top_horizontal_splitter.setSizes([400, 500, 500])
         
         top_layout.addWidget(top_horizontal_splitter)
-        self.setup_filtering_controls(top_layout)
         
         # Add to main splitter
         main_splitter.addWidget(top_widget)
@@ -299,8 +306,9 @@ class ModernMainWindow(QMainWindow):
         self.object_data_container = QWidget()
         main_splitter.addWidget(self.object_data_container)
         
-        # Set splitter proportions - less space for controls, more for object list
-        main_splitter.setSizes([320, 580])
+        # Set splitter proportions - much less space for controls, much more for object list
+        # Top controls: 250px, Object list: get remaining space (typically 650px or more)
+        main_splitter.setSizes([250, 750])
         
         # Status bar
         self.status_bar = QStatusBar()
@@ -527,32 +535,32 @@ class ModernMainWindow(QMainWindow):
         # Larger font for section title
         group_font = QFont("Segoe UI", 13, QFont.Bold)  # Increased from 11pt to 13pt
         group.setFont(group_font)
-        # No width constraint - expand to fill available space
-        layout = QVBoxLayout(group)
-        layout.setSpacing(3)
-        layout.setContentsMargins(8, 5, 8, 5)
+        # No maximum width - align with Observatory section
+        layout = QGridLayout(group)
+        layout.setSpacing(8)
+        layout.setContentsMargins(12, 12, 12, 12)
+        # Use same column configuration as Observatory section
+        layout.setColumnMinimumWidth(0, 70)   # Label column
+        layout.setColumnMinimumWidth(1, 180)  # Input column
+        layout.setColumnMinimumWidth(2, 70)   # Label column
+        layout.setColumnMinimumWidth(3, 180)  # Input column
         
-        # Sun info - compact display
+        # Sun info - compact display (spans all columns)
         self.sun_info_label = QLabel("Calculating sun data...")
         self.sun_info_label.setWordWrap(True)
         self.sun_info_label.setStyleSheet("font-size: 13pt; font-weight: 500;")
-        layout.addWidget(self.sun_info_label)
+        layout.addWidget(self.sun_info_label, 0, 0, 1, 4)  # Span all 4 columns
         
         # Moon info with phase graphic
-        moon_container = QHBoxLayout()
-        moon_container.setSpacing(5)
-        
         self.moon_info_label = QLabel("Calculating moon data...")
         self.moon_info_label.setWordWrap(True)
         self.moon_info_label.setStyleSheet("font-size: 13pt; font-weight: 500;")
-        moon_container.addWidget(self.moon_info_label, 1)
+        layout.addWidget(self.moon_info_label, 1, 0, 1, 3)  # Span 3 columns
         
-        # Add moon phase widget - smaller size
+        # Add moon phase widget in the last column
         self.moon_phase_widget = MoonPhaseWidget()
         self.moon_phase_widget.setMaximumSize(80, 100)
-        moon_container.addWidget(self.moon_phase_widget)
-        
-        layout.addLayout(moon_container)
+        layout.addWidget(self.moon_phase_widget, 1, 3, Qt.AlignCenter)  # Last column, centered
         
         parent_layout.addWidget(group)
         
