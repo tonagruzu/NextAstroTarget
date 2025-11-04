@@ -6,10 +6,10 @@ Features professional UI with dark theme, improved layouts, and better UX.
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QPushButton, QLabel, QFrame, QSplitter, QGroupBox, QComboBox,
-    QSpinBox, QDoubleSpinBox, QTimeEdit, QScrollArea, QStatusBar,
+    QSpinBox, QDoubleSpinBox, QTimeEdit, QDateEdit, QScrollArea, QStatusBar,
     QMessageBox, QDockWidget, QLineEdit
 )
-from PySide6.QtCore import Qt, QTime, QTimer, Signal, Slot
+from PySide6.QtCore import Qt, QTime, QDate, QTimer, Signal, Slot
 from PySide6.QtGui import QFont, QPalette, QColor, QIcon, QPainter, QBrush, QPen, QPixmap, QImage
 from datetime import datetime, timedelta
 import logging
@@ -228,6 +228,9 @@ class ModernMainWindow(QMainWindow):
         # Load settings
         self.load_observatory_config()
         
+        # Initialize observation datetime to current time
+        self.observation_datetime = datetime.now()
+        
         # Setup modern UI
         self.setup_modern_ui()
         self.apply_modern_stylesheet()
@@ -361,17 +364,24 @@ class ModernMainWindow(QMainWindow):
         # No width constraint - expand to fill available space
         layout = QGridLayout(group)
         layout.setSpacing(8)
-        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setContentsMargins(12, 12, 12, 12)
+        # Use 4 columns for better balance: Label, Input, Label, Input
+        layout.setColumnMinimumWidth(0, 70)   # Label column
+        layout.setColumnMinimumWidth(1, 180)  # Input column
+        layout.setColumnMinimumWidth(2, 70)   # Label column
+        layout.setColumnMinimumWidth(3, 180)  # Input column
         
-        # Location
-        layout.addWidget(QLabel("Location:"), 0, 0)
+        # Row 0: Location and Latitude
+        loc_label = QLabel("Location:")
+        loc_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        layout.addWidget(loc_label, 0, 0)
         self.location_combo = QComboBox()
         self.location_combo.addItems(["Custom Location", "Load from GPS"])
-        self.location_combo.setMinimumWidth(200)
         layout.addWidget(self.location_combo, 0, 1)
         
-        # Latitude
-        layout.addWidget(QLabel("Latitude:"), 0, 2)
+        lat_label = QLabel("Latitude:")
+        lat_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        layout.addWidget(lat_label, 0, 2)
         self.lat_spin = QDoubleSpinBox()
         self.lat_spin.setRange(-90, 90)
         self.lat_spin.setValue(self.observatory['latitude'])
@@ -379,44 +389,75 @@ class ModernMainWindow(QMainWindow):
         self.lat_spin.setDecimals(4)
         layout.addWidget(self.lat_spin, 0, 3)
         
-        # Longitude
-        layout.addWidget(QLabel("Longitude:"), 0, 4)
+        # Row 1: Address and Longitude
+        addr_label = QLabel("Address:")
+        addr_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        layout.addWidget(addr_label, 1, 0)
+        self.address_edit = QLineEdit()
+        self.address_edit.setPlaceholderText("Enter address (e.g., Gdansk, Poland)")
+        layout.addWidget(self.address_edit, 1, 1)
+        
+        lon_label = QLabel("Longitude:")
+        lon_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        layout.addWidget(lon_label, 1, 2)
         self.lon_spin = QDoubleSpinBox()
         self.lon_spin.setRange(-180, 180)
         self.lon_spin.setValue(self.observatory['longitude'])
         self.lon_spin.setSuffix("°")
         self.lon_spin.setDecimals(4)
-        layout.addWidget(self.lon_spin, 0, 5)
+        layout.addWidget(self.lon_spin, 1, 3)
         
-        # Address input (new row)
-        layout.addWidget(QLabel("Address:"), 1, 0)
-        self.address_edit = QLineEdit()
-        self.address_edit.setPlaceholderText("Enter address (e.g., Gdansk, Poland)")
-        self.address_edit.setMinimumWidth(300)
-        layout.addWidget(self.address_edit, 1, 1, 1, 3)
+        # Row 2: Date and Geocode button
+        date_label = QLabel("Date:")
+        date_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        layout.addWidget(date_label, 2, 0)
+        self.date_edit = QDateEdit()
+        self.date_edit.setDate(QDate.currentDate())
+        self.date_edit.setDisplayFormat("yyyy-MM-dd")
+        self.date_edit.setCalendarPopup(True)
+        layout.addWidget(self.date_edit, 2, 1)
         
-        # Geocode button
-        geocode_btn = QPushButton("🔍 Geocode")
-        geocode_btn.setFixedHeight(30)
-        geocode_btn.setMinimumWidth(100)
+        # Geocode button in the right side
+        geocode_btn = QPushButton("🔍 Geocode Address")
+        geocode_btn.setFixedHeight(32)
         geocode_btn.clicked.connect(self.geocode_address)
         geocode_btn.setToolTip("Convert address to coordinates using OpenStreetMap")
-        layout.addWidget(geocode_btn, 1, 4)
+        layout.addWidget(geocode_btn, 2, 2, 1, 2)  # Span 2 columns
         
-        # Date/Time
-        layout.addWidget(QLabel("Observation Time:"), 2, 0)
+        # Row 3: Time and control buttons
+        time_label = QLabel("Time:")
+        time_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        layout.addWidget(time_label, 3, 0)
         self.time_edit = QTimeEdit()
         self.time_edit.setTime(QTime.currentTime())
         self.time_edit.setDisplayFormat("HH:mm")
-        layout.addWidget(self.time_edit, 2, 1)
+        layout.addWidget(self.time_edit, 3, 1)
         
-        # Apply button
+        # Time control buttons in a horizontal layout
+        time_btn_layout = QHBoxLayout()
+        time_btn_layout.setSpacing(8)
+        
+        now_btn = QPushButton("⏰ Now")
+        now_btn.setFixedHeight(32)
+        now_btn.clicked.connect(self.set_time_to_now)
+        now_btn.setToolTip("Set date and time to current moment")
+        time_btn_layout.addWidget(now_btn)
+        
+        sunset_btn = QPushButton("🌇 Sunset")
+        sunset_btn.setFixedHeight(32)
+        sunset_btn.clicked.connect(self.set_time_to_sunset)
+        sunset_btn.setToolTip("Set time to sunset on selected date")
+        time_btn_layout.addWidget(sunset_btn)
+        
+        layout.addLayout(time_btn_layout, 3, 2, 1, 2)  # Span 2 columns
+        
+        # Row 4: Apply button (right-aligned)
         apply_btn = QPushButton("Apply Settings")
-        apply_btn.setFixedHeight(30)
-        apply_btn.setMinimumWidth(120)
+        apply_btn.setFixedHeight(32)
+        apply_btn.setMinimumWidth(140)
         apply_btn.clicked.connect(self.apply_location_settings)
-        layout.addWidget(apply_btn, 2, 5)
-        
+        layout.addWidget(apply_btn, 4, 3, Qt.AlignRight)
+
         parent_layout.addWidget(group)
         
     def setup_sun_moon_info(self, parent_splitter):
@@ -953,7 +994,8 @@ class ModernMainWindow(QMainWindow):
         """Update sun and moon data displays."""
         try:
             from datetime import datetime, timedelta
-            current_time = datetime.now()
+            # Use observation datetime instead of current time
+            current_time = self.observation_datetime
             
             # Update sun position
             sun_alt, sun_az = self.astro_calc.calculate_sun_position(
@@ -1027,14 +1069,29 @@ class ModernMainWindow(QMainWindow):
         """Apply location and time settings."""
         self.observatory['latitude'] = self.lat_spin.value()
         self.observatory['longitude'] = self.lon_spin.value()
+        
+        # Get date and time from pickers
+        selected_date = self.date_edit.date()
+        selected_time = self.time_edit.time()
+        
+        # Store observation datetime
+        self.observation_datetime = datetime(
+            selected_date.year(),
+            selected_date.month(),
+            selected_date.day(),
+            selected_time.hour(),
+            selected_time.minute()
+        )
+        
         self.save_observatory_config()
         
         self.status_bar.showMessage(
             f"Updated location: {self.observatory['latitude']:.4f}°, "
-            f"{self.observatory['longitude']:.4f}°"
+            f"{self.observatory['longitude']:.4f}° | "
+            f"Time: {self.observation_datetime.strftime('%Y-%m-%d %H:%M')}"
         )
         
-        # Update astronomical data with new location
+        # Update astronomical data with new location and time
         self.update_astronomical_data()
         
         # Refresh calculations if target screen exists
@@ -1133,6 +1190,62 @@ class ModernMainWindow(QMainWindow):
             )
             self.status_bar.showMessage("Geocoding failed", 5000)
             self.logger.error(f"Unexpected geocoding error: {e}", exc_info=True)
+    
+    @Slot()
+    def set_time_to_now(self):
+        """Set date and time to current moment."""
+        self.date_edit.setDate(QDate.currentDate())
+        self.time_edit.setTime(QTime.currentTime())
+        self.status_bar.showMessage("Date and time set to now", 3000)
+        self.logger.info("Observation time set to current date/time")
+    
+    @Slot()
+    def set_time_to_sunset(self):
+        """Set time to sunset on the selected date."""
+        # Get the selected date
+        selected_date = self.date_edit.date()
+        year = selected_date.year()
+        month = selected_date.month()
+        day = selected_date.day()
+        
+        # Create date object for the selected date
+        from datetime import date, timedelta
+        target_date = date(year, month, day)
+        
+        # Calculate sunset for this date
+        calculator = AstronomicalCalculator()
+        sun_data = calculator.calculate_sun_times(
+            self.observatory['latitude'],
+            self.observatory['longitude'],
+            target_date
+        )
+        
+        if 'sunset' in sun_data and sun_data['sunset']:
+            sunset_time = sun_data['sunset']
+            
+            # Apply GMT offset and DST
+            gmt_offset_hours = self.observatory.get('gmt_offset', 0)
+            gmt_offset = timedelta(hours=gmt_offset_hours)
+            if self.observatory.get('dst_active', False):
+                gmt_offset += timedelta(hours=1)
+            
+            # Adjust sunset time to local time
+            local_sunset = sunset_time + gmt_offset
+            
+            # Set the time edit to local sunset time
+            self.time_edit.setTime(QTime(local_sunset.hour, local_sunset.minute))
+            
+            sunset_str = local_sunset.strftime("%H:%M")
+            self.status_bar.showMessage(f"Time set to sunset: {sunset_str}", 3000)
+            self.logger.info(f"Observation time set to sunset: {sunset_str} on {selected_date.toString('yyyy-MM-dd')}")
+        else:
+            QMessageBox.warning(
+                self,
+                "Sunset Not Available",
+                f"Could not calculate sunset for the selected date.\n"
+                f"This may occur in polar regions during certain seasons."
+            )
+            self.status_bar.showMessage("Sunset calculation failed", 3000)
                 
     @Slot(str)
     def filter_by_rating(self, rating):
