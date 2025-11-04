@@ -308,41 +308,34 @@ class ModernMainWindow(QMainWindow):
         self.status_bar.showMessage("Ready")
         
     def setup_header(self, parent_layout):
-        """Create modern header section."""
+        """Create compact header section with icon, app name, and action buttons."""
         header_frame = QFrame()
         header_frame.setObjectName("headerFrame")
         header_layout = QHBoxLayout(header_frame)
-        header_layout.setContentsMargins(5, 5, 5, 5)
-        
-        # App icon and title container
-        title_container = QWidget()
-        title_container_layout = QHBoxLayout(title_container)
-        title_container_layout.setContentsMargins(0, 0, 0, 0)
-        title_container_layout.setSpacing(15)
+        header_layout.setContentsMargins(10, 4, 10, 4)  # Reduced vertical padding from 8 to 4
+        header_layout.setSpacing(15)
         
         # App icon
         icon_label = QLabel()
         icon_path = Path(__file__).parent.parent.parent / "assets" / "icon_64.png"
         if icon_path.exists():
             icon_pixmap = QPixmap(str(icon_path))
-            # Scale icon to balanced size (56x56)
-            scaled_icon = icon_pixmap.scaled(56, 56, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            # Use 48x48 for a balanced, compact header
+            scaled_icon = icon_pixmap.scaled(48, 48, Qt.KeepAspectRatio, Qt.SmoothTransformation)
             icon_label.setPixmap(scaled_icon)
         else:
             self.logger.warning(f"App icon not found at {icon_path}")
-        title_container_layout.addWidget(icon_label)
+        header_layout.addWidget(icon_label)
         
-        # App title with much larger font
-        title_label = QLabel("NextAstroTarget")
-        title_font = QFont("Segoe UI", 96, QFont.Bold)  # Doubled from 48pt to 96pt
+        # App name - large and prominent, taking most of the available space
+        title_label = QLabel("Next Astro Target")
+        title_label.setObjectName("appTitle")
+        title_font = QFont("Segoe UI", 38, QFont.Bold)  # 38pt (20% smaller than 48pt)
         title_label.setFont(title_font)
-        title_label.setStyleSheet("color: #4A9EFF;")
-        title_container_layout.addWidget(title_label)
+        title_label.setStyleSheet("color: #4A9EFF; padding: 0px 20px; font-size: 38pt; font-weight: bold;")
+        header_layout.addWidget(title_label, stretch=1)  # stretch=1 makes it take available space
         
-        header_layout.addWidget(title_container)
-        header_layout.addStretch()
-        
-        # Quick action buttons - reduced height
+        # Quick action buttons
         self.refresh_btn = QPushButton("🔄 Refresh Data")
         self.settings_btn = QPushButton("⚙️ Settings")
         self.help_btn = QPushButton("❓ Help")
@@ -362,7 +355,7 @@ class ModernMainWindow(QMainWindow):
         group = QGroupBox("📍 Observatory & Time Settings")
         group.setObjectName("controlGroup")
         # Larger font for section title
-        group_font = QFont("Segoe UI", 11, QFont.Bold)
+        group_font = QFont("Segoe UI", 13, QFont.Bold)  # Increased from 11pt to 13pt
         group.setFont(group_font)
         # No width constraint - expand to fill available space
         layout = QGridLayout(group)
@@ -468,7 +461,7 @@ class ModernMainWindow(QMainWindow):
         group = QGroupBox("☀️ Sun & 🌙 Moon")
         group.setObjectName("infoGroup")
         # Larger font for section title
-        group_font = QFont("Segoe UI", 11, QFont.Bold)
+        group_font = QFont("Segoe UI", 13, QFont.Bold)  # Increased from 11pt to 13pt
         group.setFont(group_font)
         # Reduce width by 50%
         group.setMaximumWidth(400)
@@ -505,7 +498,7 @@ class ModernMainWindow(QMainWindow):
         group = QGroupBox("🌤️ Weather Forecast")
         group.setObjectName("infoGroup")
         # Larger font for section title
-        group_font = QFont("Segoe UI", 11, QFont.Bold)
+        group_font = QFont("Segoe UI", 13, QFont.Bold)  # Increased from 11pt to 13pt
         group.setFont(group_font)
         # Make weather widget taller - double the height
         group.setMinimumHeight(350)
@@ -532,7 +525,7 @@ class ModernMainWindow(QMainWindow):
         group = QGroupBox("☀️ Sun & 🌙 Moon")
         group.setObjectName("infoGroup")
         # Larger font for section title
-        group_font = QFont("Segoe UI", 11, QFont.Bold)
+        group_font = QFont("Segoe UI", 13, QFont.Bold)  # Increased from 11pt to 13pt
         group.setFont(group_font)
         # No width constraint - expand to fill available space
         layout = QVBoxLayout(group)
@@ -568,7 +561,7 @@ class ModernMainWindow(QMainWindow):
         group = QGroupBox("🌤️ Weather Forecast")
         group.setObjectName("infoGroup")
         # Larger font for section title
-        group_font = QFont("Segoe UI", 11, QFont.Bold)
+        group_font = QFont("Segoe UI", 13, QFont.Bold)  # Increased from 11pt to 13pt
         group.setFont(group_font)
         # Narrower but taller - use vertical space
         group.setMaximumWidth(700)
@@ -596,7 +589,7 @@ class ModernMainWindow(QMainWindow):
         group = QGroupBox("🔍 Target Filters")
         group.setObjectName("controlGroup")
         # Larger font for section title
-        group_font = QFont("Segoe UI", 11, QFont.Bold)
+        group_font = QFont("Segoe UI", 13, QFont.Bold)  # Increased from 11pt to 13pt
         group.setFont(group_font)
         layout = QGridLayout(group)
         layout.setSpacing(6)
@@ -714,7 +707,7 @@ class ModernMainWindow(QMainWindow):
             }
             
             QGroupBox {
-                border: 2px solid #3a3a3a;
+                border: 2px solid #5a5a5a;
                 border-radius: 8px;
                 margin-top: 12px;
                 padding-top: 15px;
