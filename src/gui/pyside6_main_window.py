@@ -357,31 +357,31 @@ class ModernMainWindow(QMainWindow):
         header_layout.addWidget(title_label, stretch=1)  # stretch=1 makes it take available space
         
         # Quick action buttons
-        self.refresh_btn = QPushButton("🔄 Refresh Data")
         self.settings_btn = QPushButton("⚙️ Settings")
         self.help_btn = QPushButton("❓ Help")
         self.exit_btn = QPushButton("🚪 Exit")
         
-        # Style the Exit button with light red background and white text
+        # Style the Exit button with deep navy blue theme
         self.exit_btn.setStyleSheet("""
             QPushButton {
-                background-color: #FFB3BA;
-                color: #8B0000;
+                background-color: #2C3E50;
+                color: #FFFFFF;
                 font-weight: bold;
-                border: 1px solid #FF8A8A;
+                border: 1px solid #34495E;
                 border-radius: 4px;
                 padding: 4px 8px;
             }
             QPushButton:hover {
-                background-color: #FF9999;
-                border: 1px solid #FF6666;
+                background-color: #34495E;
+                border: 1px solid #4A6278;
             }
             QPushButton:pressed {
-                background-color: #FF7777;
+                background-color: #1A252F;
+                border: 1px solid #2C3E50;
             }
         """)
         
-        for btn in [self.refresh_btn, self.settings_btn, self.help_btn, self.exit_btn]:
+        for btn in [self.settings_btn, self.help_btn, self.exit_btn]:
             btn.setFixedHeight(30)
             btn.setMinimumWidth(110)
             header_layout.addWidget(btn)
