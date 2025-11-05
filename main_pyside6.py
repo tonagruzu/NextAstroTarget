@@ -67,6 +67,15 @@ class NextAstroTargetApp:
             # Set application style
             self.app.setStyle("Fusion")  # Modern cross-platform style
             
+            # Windows-specific: Set AppUserModelID for proper taskbar icon grouping
+            if sys.platform == 'win32':
+                try:
+                    import ctypes
+                    myappid = 'AstroTarget.NextAstroTarget.App.1.0'  # arbitrary string
+                    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+                except Exception as e:
+                    self.logger.warning(f"Could not set Windows AppUserModelID: {e}")
+            
             # Set window icon if available
             icon_path = "assets/icon.ico"
             if os.path.exists(icon_path):

@@ -254,6 +254,12 @@ class ModernMainWindow(QMainWindow):
     def setup_modern_ui(self):
         """Set up modern PySide6 interface."""
         self.setWindowTitle("NextAstroTarget - Astronomy Target Planning")
+        
+        # Set application icon for window and taskbar
+        icon_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'assets', 'icon.ico')
+        if os.path.exists(icon_path):
+            self.setWindowIcon(QIcon(icon_path))
+        
         self.setMinimumSize(1400, 900)
         
         # Create central widget with modern layout
