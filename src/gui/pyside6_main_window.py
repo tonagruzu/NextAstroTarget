@@ -7,9 +7,9 @@ from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QPushButton, QLabel, QFrame, QSplitter, QGroupBox, QComboBox,
     QSpinBox, QDoubleSpinBox, QTimeEdit, QDateEdit, QScrollArea, QStatusBar,
-    QMessageBox, QDockWidget, QLineEdit
+    QMessageBox, QDockWidget, QLineEdit, QTextEdit, QCheckBox, QDialog, QDialogButtonBox
 )
-from PySide6.QtCore import Qt, QTime, QDate, QTimer, Signal, Slot
+from PySide6.QtCore import Qt, QTime, QDate, QTimer, Signal, Slot, QObject
 from PySide6.QtGui import QFont, QPalette, QColor, QIcon, QPainter, QBrush, QPen, QPixmap, QImage
 from datetime import datetime, timedelta
 import logging
@@ -225,6 +225,11 @@ class ModernMainWindow(QMainWindow):
         # Filter button references
         self.filter_buttons = {}
         
+        # Log window state and widget
+        self.log_window_enabled = False
+        self.log_dock = None
+        self.log_widget = None
+        
         # Load settings
         self.load_observatory_config()
         
@@ -347,14 +352,17 @@ class ModernMainWindow(QMainWindow):
         self.refresh_btn = QPushButton("🔄 Refresh Data")
         self.settings_btn = QPushButton("⚙️ Settings")
         self.help_btn = QPushButton("❓ Help")
+        self.exit_btn = QPushButton("🚪 Exit")
         
-        for btn in [self.refresh_btn, self.settings_btn, self.help_btn]:
+        for btn in [self.refresh_btn, self.settings_btn, self.help_btn, self.exit_btn]:
             btn.setFixedHeight(30)
             btn.setMinimumWidth(110)
             header_layout.addWidget(btn)
         
-        # Connect help button
+        # Connect buttons
+        self.settings_btn.clicked.connect(self.show_settings_dialog)
         self.help_btn.clicked.connect(self.show_help_dialog)
+        self.exit_btn.clicked.connect(self.close)
         
         parent_layout.addWidget(header_frame)
         
@@ -923,6 +931,14 @@ class ModernMainWindow(QMainWindow):
             if address is not None:
                 self.address_edit.setText(address)
             
+            # Load log window setting
+            log_enabled = self.db_manager.get_setting('log_window_enabled')
+            if log_enabled is not None:
+                self.log_window_enabled = log_enabled.lower() == 'true'
+                # Setup log window if enabled
+                if self.log_window_enabled:
+                    self.setup_log_window()
+            
             self.logger.info("Loaded persistent settings from database")
         except Exception as e:
             self.logger.error(f"Failed to load persistent settings: {e}", exc_info=True)
@@ -944,6 +960,9 @@ class ModernMainWindow(QMainWindow):
             
             # Save observatory address
             self.db_manager.save_setting('observatory_address', self.address_edit.text())
+            
+            # Save log window setting
+            self.db_manager.save_setting('log_window_enabled', str(self.log_window_enabled))
             
             self.logger.info("Saved persistent settings to database")
         except Exception as e:
@@ -1309,6 +1328,129 @@ class ModernMainWindow(QMainWindow):
         
         # Apply cleared filters
         self.apply_all_filters()
+    
+    def setup_log_window(self):
+        """Setup log window as a dockable widget."""
+        if self.log_dock is None:
+            # Create dock widget
+            self.log_dock = QDockWidget("Application Logs", self)
+            self.log_dock.setAllowedAreas(Qt.BottomDockWidgetArea | Qt.RightDockWidgetArea)
+            
+            # Create log text widget
+            self.log_widget = QTextEdit()
+            self.log_widget.setReadOnly(True)
+            self.log_widget.setStyleSheet("""
+                QTextEdit {
+                    background-color: #1e1e1e;
+                    color: #e0e0e0;
+                    font-family: 'Consolas', 'Courier New', monospace;
+                    font-size: 9pt;
+                    border: none;
+                }
+            """)
+            
+            self.log_dock.setWidget(self.log_widget)
+            self.addDockWidget(Qt.BottomDockWidgetArea, self.log_dock)
+            
+            # Setup log handler to redirect logs to widget
+            self.setup_log_handler()
+        
+        # Show or hide based on setting
+        if self.log_window_enabled:
+            self.log_dock.show()
+        else:
+            self.log_dock.hide()
+    
+    def setup_log_handler(self):
+        """Setup custom log handler to display logs in the widget."""
+        import logging
+        from PySide6.QtCore import QObject, Signal
+        
+        class LogEmitter(QObject):
+            log_signal = Signal(str)
+        
+        class QTextEditLogger(logging.Handler):
+            def __init__(self, widget):
+                super().__init__()
+                self.widget = widget
+                self.emitter = LogEmitter()
+                self.emitter.log_signal.connect(self.widget.append)
+                
+            def emit(self, record):
+                msg = self.format(record)
+                self.emitter.log_signal.emit(msg)
+        
+        # Create and configure handler
+        log_handler = QTextEditLogger(self.log_widget)
+        log_handler.setLevel(logging.DEBUG)
+        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s', 
+                                     datefmt='%H:%M:%S')
+        log_handler.setFormatter(formatter)
+        
+        # Add handler to root logger
+        logging.getLogger().addHandler(log_handler)
+        self.log_handler = log_handler
+    
+    @Slot()
+    def show_settings_dialog(self):
+        """Show settings dialog for application preferences."""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("⚙️ Application Settings")
+        dialog.setMinimumWidth(400)
+        
+        layout = QVBoxLayout(dialog)
+        layout.setSpacing(15)
+        layout.setContentsMargins(20, 20, 20, 20)
+        
+        # Title
+        title = QLabel("<h2>Application Settings</h2>")
+        title.setStyleSheet("color: #4A9EFF;")
+        layout.addWidget(title)
+        
+        # Log window setting
+        log_group = QGroupBox("Logging")
+        log_layout = QVBoxLayout(log_group)
+        
+        log_checkbox = QCheckBox("Show log window")
+        log_checkbox.setChecked(self.log_window_enabled)
+        log_checkbox.setToolTip("Display application logs in a dockable window at the bottom")
+        log_layout.addWidget(log_checkbox)
+        
+        log_info = QLabel("Note: Logs are always saved to logs/nextastrotarget.log")
+        log_info.setStyleSheet("color: #808080; font-size: 9pt; font-style: italic;")
+        log_layout.addWidget(log_info)
+        
+        layout.addWidget(log_group)
+        
+        # Spacer
+        layout.addStretch()
+        
+        # Buttons
+        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        button_box.accepted.connect(dialog.accept)
+        button_box.rejected.connect(dialog.reject)
+        layout.addWidget(button_box)
+        
+        # Show dialog
+        if dialog.exec_() == QDialog.Accepted:
+            # Save settings
+            old_state = self.log_window_enabled
+            self.log_window_enabled = log_checkbox.isChecked()
+            
+            # Apply log window state
+            if self.log_window_enabled != old_state:
+                if self.log_dock is None:
+                    self.setup_log_window()
+                else:
+                    if self.log_window_enabled:
+                        self.log_dock.show()
+                    else:
+                        self.log_dock.hide()
+            
+            # Save to persistent settings
+            self.save_persistent_settings()
+            
+            self.logger.info(f"Settings updated: Log window {'enabled' if self.log_window_enabled else 'disabled'}")
     
     @Slot()
     def show_help_dialog(self):

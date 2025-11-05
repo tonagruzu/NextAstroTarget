@@ -5,7 +5,7 @@ Modern PySide6 target selection GUI with professional table view.
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
     QHeaderView, QPushButton, QLabel, QLineEdit, QMenu, QMessageBox, QToolTip,
-    QDialog, QScrollArea, QGroupBox
+    QDialog, QScrollArea, QGroupBox, QFrame
 )
 from PySide6.QtCore import Qt, Signal, Slot, QTimer, QPoint
 from PySide6.QtGui import QColor, QBrush, QFont, QAction, QPixmap, QCursor
@@ -100,9 +100,9 @@ class PySide6TargetSelectionGUI(QWidget):
         """Configure table widget."""
         # Columns
         columns = [
-            "Object", "Type", "Subtype", "Constellation",
+            "❤️", "Object", "Nick", "Type", "Subtype", "Constellation",
             "RA", "Dec", "Size", "Magnitude", "Rating",
-            "Transit", "Altitude", "Nick"
+            "Transit", "Altitude", "Alt +1h", "Alt +2h", "Alt +3h"
         ]
         
         self.table.setColumnCount(len(columns))
@@ -117,11 +117,15 @@ class PySide6TargetSelectionGUI(QWidget):
         
         # Header styling
         header = self.table.horizontalHeader()
-        header.setStretchLastSection(True)
-        header.setSectionResizeMode(0, QHeaderView.Stretch)  # Object name stretches
+        header.setStretchLastSection(False)  # Don't stretch last column, leave space on right
+        header.setSectionResizeMode(2, QHeaderView.ResizeToContents)  # Nick auto-sizes to content
         
         # Set specific column widths
-        self.table.setColumnWidth(8, 120)  # Rating column - wide enough for 5 stars (⭐⭐⭐⭐⭐)
+        self.table.setColumnWidth(0, 50)   # Like column - wide enough for heart emoji
+        self.table.setColumnWidth(1, 120)  # Object column - narrow for short IDs
+        self.table.setColumnWidth(10, 120)  # Rating column - wide enough for 5 stars (⭐⭐⭐⭐⭐)
+        self.table.setColumnWidth(14, 80)  # Alt +2h column - fixed width
+        self.table.setColumnWidth(15, 80)  # Alt +3h column - same width as Alt +2h
         
         # Context menu
         self.table.setContextMenuPolicy(Qt.CustomContextMenu)
@@ -265,26 +269,33 @@ class PySide6TargetSelectionGUI(QWidget):
             row = self.table.rowCount()
             self.table.insertRow(row)
             
-            # Populate columns
-            self.set_table_item(row, 0, obj.get('object_name', ''))
-            self.set_table_item(row, 1, obj.get('object_type', ''))
-            self.set_table_item(row, 2, obj.get('subtype', ''))
-            self.set_table_item(row, 3, obj.get('constellation', ''))
-            self.set_table_item(row, 4, self.format_ra(obj.get('ra_degrees')))
-            self.set_table_item(row, 5, self.format_dec(obj.get('dec_degrees')))
-            self.set_table_item(row, 6, self.format_size(obj.get('size_arcmin')))
-            self.set_table_item(row, 7, obj.get('magnitude', ''))
-            self.set_table_item(row, 8, self.format_rating(obj.get('rating')))
+            # Get liked status from database
+            object_name = obj.get('object_name', '')
+            is_liked = self.db_manager.get_liked_status(object_name)
             
-            # Calculate transit time and altitude
-            transit_time, altitude = self.calculate_astronomical_data(obj)
-            self.set_table_item(row, 9, transit_time)
-            self.set_table_item(row, 10, altitude)
+            # Populate columns (shifted by 1 due to new Like column)
+            self.set_table_item(row, 0, '❤️' if is_liked else '')  # Like indicator
+            self.set_table_item(row, 1, obj.get('object_name', ''))
+            self.set_table_item(row, 2, obj.get('nick', ''))
+            self.set_table_item(row, 3, obj.get('object_type', ''))
+            self.set_table_item(row, 4, obj.get('subtype', ''))
+            self.set_table_item(row, 5, obj.get('constellation', ''))
+            self.set_table_item(row, 6, self.format_ra(obj.get('ra_degrees')))
+            self.set_table_item(row, 7, self.format_dec(obj.get('dec_degrees')))
+            self.set_table_item(row, 8, self.format_size(obj.get('size_arcmin')))
+            self.set_table_item(row, 9, obj.get('magnitude', ''))
+            self.set_table_item(row, 10, self.format_rating(obj.get('rating')))
             
-            self.set_table_item(row, 11, obj.get('nick', ''))
+            # Calculate transit time and altitude (including +1h, +2h, +3h)
+            transit_time, altitude, altitude_1h, altitude_2h, altitude_3h = self.calculate_astronomical_data(obj)
+            self.set_table_item(row, 11, transit_time)
+            self.set_table_item(row, 12, altitude)
+            self.set_table_item(row, 13, altitude_1h)
+            self.set_table_item(row, 14, altitude_2h)
+            self.set_table_item(row, 15, altitude_3h)
             
-            # Store object data in first column
-            item = self.table.item(row, 0)
+            # Store object data in Object column (now column 1)
+            item = self.table.item(row, 1)
             if item:
                 item.setData(Qt.UserRole, obj)
                 
@@ -295,10 +306,27 @@ class PySide6TargetSelectionGUI(QWidget):
         shown = min(total, 1000)
         self.count_label.setText(f"📊 Showing {shown} of {total} objects")
         
-    def set_table_item(self, row, col, text):
-        """Set table item with proper formatting."""
+    def set_table_item(self, row, col, text, alignment=None):
+        """Set table item with proper formatting.
+        
+        Args:
+            row: Row index
+            col: Column index
+            text: Text to display
+            alignment: Qt alignment flags (if None, uses column-specific defaults)
+        """
         item = QTableWidgetItem(str(text) if text else "")
-        item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        
+        # Column-specific alignment
+        # Left-aligned: Object (1), Nick (2), Rating (10)
+        # Center-aligned: All others
+        if alignment is None:
+            if col in [1, 2, 10]:  # Object, Nick, Rating
+                alignment = Qt.AlignLeft | Qt.AlignVCenter
+            else:  # All other columns centered
+                alignment = Qt.AlignCenter | Qt.AlignVCenter
+        
+        item.setTextAlignment(alignment)
         self.table.setItem(row, col, item)
         
     def format_ra(self, ra_degrees):
@@ -341,13 +369,13 @@ class PySide6TargetSelectionGUI(QWidget):
             return ""
             
     def calculate_astronomical_data(self, obj: Dict) -> tuple:
-        """Calculate transit time and altitude for an object."""
+        """Calculate transit time and altitude for an object at current time and +1h, +2h, +3h."""
         try:
             ra_deg = obj.get('ra_degrees')
             dec_deg = obj.get('dec_degrees')
             
             if ra_deg is None or dec_deg is None:
-                return ("--:--", "--°")
+                return ("--:--", "--°", "--°", "--°", "--°")
                 
             ra_deg_float = float(ra_deg)
             dec_deg_float = float(dec_deg)
@@ -362,16 +390,37 @@ class PySide6TargetSelectionGUI(QWidget):
                 self.observatory['latitude'], self.observatory['longitude']
             )
             
+            # Calculate altitude at +1h, +2h, +3h
+            from datetime import timedelta
+            altitude_1h, _ = self.astro_calc.calculate_altitude_azimuth(
+                ra_hours, dec_deg_float, current_time + timedelta(hours=1),
+                self.observatory['latitude'], self.observatory['longitude']
+            )
+            altitude_2h, _ = self.astro_calc.calculate_altitude_azimuth(
+                ra_hours, dec_deg_float, current_time + timedelta(hours=2),
+                self.observatory['latitude'], self.observatory['longitude']
+            )
+            altitude_3h, _ = self.astro_calc.calculate_altitude_azimuth(
+                ra_hours, dec_deg_float, current_time + timedelta(hours=3),
+                self.observatory['latitude'], self.observatory['longitude']
+            )
+            
             # Calculate transit time
             transit_time = self.astro_calc.calculate_transit_time(
                 ra_hours, self.observatory['longitude'], current_time.date()
             )
             
-            return (transit_time.strftime('%H:%M'), f"{altitude:.1f}°")
+            return (
+                transit_time.strftime('%H:%M'),
+                f"{altitude:.1f}°",
+                f"{altitude_1h:.1f}°",
+                f"{altitude_2h:.1f}°",
+                f"{altitude_3h:.1f}°"
+            )
             
         except Exception as e:
             self.logger.debug(f"Error calculating astronomical data: {e}")
-            return ("--:--", "--°")
+            return ("--:--", "--°", "--°", "--°", "--°")
             
     @Slot(str)
     def on_search_changed(self, text):
@@ -463,7 +512,7 @@ class PySide6TargetSelectionGUI(QWidget):
     def on_cell_hover(self, row, column):
         """Handle cell hover for image preview."""
         if row >= 0 and row < self.table.rowCount():
-            item = self.table.item(row, 0)
+            item = self.table.item(row, 1)  # Object name is now in column 1
             if item:
                 obj_data = item.data(Qt.UserRole)
                 if obj_data:
@@ -810,7 +859,7 @@ class PySide6TargetSelectionGUI(QWidget):
         """Handle row double-click - show detail dialog with DSS image."""
         current_row = self.table.currentRow()
         if current_row >= 0:
-            item = self.table.item(current_row, 0)
+            item = self.table.item(current_row, 1)  # Object name is now in column 1
             if item:
                 obj_data = item.data(Qt.UserRole)
                 if obj_data:
@@ -833,6 +882,69 @@ class PySide6TargetSelectionGUI(QWidget):
             # Object name header
             name_label = QLabel(f"<h2 style='color: #4A9EFF;'>{obj_data.get('object_name', 'Unknown')}</h2>")
             layout.addWidget(name_label)
+            
+            # Like button
+            object_name = obj_data.get('object_name', '')
+            is_liked = self.db_manager.get_liked_status(object_name)
+            
+            like_btn = QPushButton()
+            like_btn.setCheckable(True)
+            like_btn.setChecked(is_liked)
+            like_btn.setFixedHeight(40)
+            like_btn.setFixedWidth(200)
+            
+            def update_like_button():
+                if like_btn.isChecked():
+                    like_btn.setText("❤️ Added to Session")
+                    like_btn.setStyleSheet("""
+                        QPushButton {
+                            background-color: #E74C3C;
+                            color: white;
+                            font-weight: bold;
+                            border-radius: 4px;
+                            font-size: 11pt;
+                        }
+                        QPushButton:hover {
+                            background-color: #C0392B;
+                        }
+                    """)
+                else:
+                    like_btn.setText("🤍 Add to Session")
+                    like_btn.setStyleSheet("""
+                        QPushButton {
+                            background-color: #3a3a3a;
+                            color: white;
+                            font-weight: bold;
+                            border: 2px solid #E74C3C;
+                            border-radius: 4px;
+                            font-size: 11pt;
+                        }
+                        QPushButton:hover {
+                            background-color: #4a4a4a;
+                        }
+                    """)
+            
+            update_like_button()
+            
+            def toggle_like():
+                new_status = like_btn.isChecked()
+                if self.db_manager.update_liked_status(object_name, new_status):
+                    update_like_button()
+                    # Refresh table to show updated heart icon
+                    self.update_table_display()
+                else:
+                    # Revert button state if database update failed
+                    like_btn.setChecked(not new_status)
+                    QMessageBox.warning(dialog, "Error", "Failed to update like status.")
+            
+            like_btn.clicked.connect(toggle_like)
+            layout.addWidget(like_btn, alignment=Qt.AlignCenter)
+            
+            # Separator line
+            separator = QFrame()
+            separator.setFrameShape(QFrame.HLine)
+            separator.setStyleSheet("background-color: #4A9EFF;")
+            layout.addWidget(separator)
             
             # Editable Nick field
             nick_layout = QHBoxLayout()
@@ -1039,7 +1151,7 @@ class PySide6TargetSelectionGUI(QWidget):
                     }
                 """)
                 stellarium_btn.clicked.connect(lambda: self.open_in_stellarium(
-                    ra_deg, dec_deg, obj_data.get('object_name', 'Object')
+                    ra_deg, dec_deg, obj_data
                 ))
                 buttons_layout.addWidget(stellarium_btn)
             
@@ -1094,10 +1206,56 @@ class PySide6TargetSelectionGUI(QWidget):
             self.logger.error(f"Error showing detail dialog: {e}", exc_info=True)
             QMessageBox.warning(self, "Error", f"Could not show object details: {str(e)}")
     
-    def open_in_stellarium(self, ra_deg, dec_deg, obj_name):
-        """Open Stellarium with the specified coordinates."""
+    def open_in_stellarium(self, ra_deg, dec_deg, obj_data):
+        """Open Stellarium with the specified object using name or coordinates."""
         try:
-            # Convert RA from degrees to hours for Stellarium
+            # Try to find a catalog designation that Stellarium recognizes
+            # Priority: Messier > NGC > IC > object name
+            stellarium_name = None
+            obj_name = obj_data.get('object_name', 'Unknown')
+            
+            # Check for Messier designation
+            messier = obj_data.get('messier_designation', '')
+            if messier and str(messier).strip() and str(messier).strip().lower() not in ['nan', 'none', '']:
+                # Format: M 31 or M31
+                messier_str = str(messier).strip()
+                if messier_str.isdigit():
+                    stellarium_name = f"M {messier_str}"
+                else:
+                    stellarium_name = messier_str
+                self.logger.info(f"Using Messier designation: {stellarium_name}")
+            
+            # Check for NGC designation
+            if not stellarium_name:
+                ngc = obj_data.get('ngc_designation', '')
+                if ngc and str(ngc).strip() and str(ngc).strip().lower() not in ['nan', 'none', '']:
+                    ngc_str = str(ngc).strip()
+                    if ngc_str.isdigit():
+                        stellarium_name = f"NGC {ngc_str}"
+                    else:
+                        stellarium_name = ngc_str
+                    self.logger.info(f"Using NGC designation: {stellarium_name}")
+            
+            # Check for IC designation
+            if not stellarium_name:
+                ic = obj_data.get('ic_designation', '')
+                if ic and str(ic).strip() and str(ic).strip().lower() not in ['nan', 'none', '']:
+                    ic_str = str(ic).strip()
+                    if ic_str.isdigit():
+                        stellarium_name = f"IC {ic_str}"
+                    else:
+                        stellarium_name = ic_str
+                    self.logger.info(f"Using IC designation: {stellarium_name}")
+            
+            # If no catalog designation found, try using the object name directly
+            if not stellarium_name and obj_name:
+                # Check if object name starts with known catalog prefixes
+                obj_name_upper = obj_name.upper()
+                if any(obj_name_upper.startswith(prefix) for prefix in ['M ', 'NGC ', 'IC ', 'MESSIER ']):
+                    stellarium_name = obj_name
+                    self.logger.info(f"Using object name: {stellarium_name}")
+            
+            # Convert RA from degrees to hours for coordinate fallback
             ra_hours = float(ra_deg) / 15.0
             dec_float = float(dec_deg)
             
@@ -1127,20 +1285,33 @@ class PySide6TargetSelectionGUI(QWidget):
             
             # Create a temporary startup script for Stellarium
             import tempfile
-            script_content = f"""
-// Startup script to center on object
+            
+            # Use object name if available, otherwise use coordinates
+            if stellarium_name:
+                script_content = f"""
+// Startup script to center on object by name
+core.wait(2);
+core.selectObjectByName("{stellarium_name}", true);
+core.wait(0.5);
+StelMovementMgr.setFlagTracking(true);
+StelMovementMgr.zoomTo(45, 1);
+"""
+                self.logger.info(f"Opening Stellarium for '{stellarium_name}' ({obj_name})")
+            else:
+                script_content = f"""
+// Startup script to center on object by coordinates
 core.wait(2);
 core.moveToRaDec({ra_hours:.6f}, {dec_float:.6f});
 core.wait(0.5);
 StelMovementMgr.zoomTo(45, 1);
 """
+                self.logger.info(f"Opening Stellarium for {obj_name} at RA={ra_hours:.2f}h, Dec={dec_float:.2f}°")
             
             # Create temp script file
             with tempfile.NamedTemporaryFile(mode='w', suffix='.ssc', delete=False) as f:
                 f.write(script_content)
                 script_path = f.name
             
-            self.logger.info(f"Opening Stellarium for {obj_name} at RA={ra_hours:.2f}h, Dec={dec_float:.2f}°")
             self.logger.debug(f"Created startup script: {script_path}")
             
             # Launch Stellarium with the startup script

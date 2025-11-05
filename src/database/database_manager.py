@@ -218,6 +218,76 @@ class DatabaseManager:
             self.logger.error(f"Error updating nick for '{object_name}': {e}")
             return False
     
+    def update_liked_status(self, object_name: str, liked: bool) -> bool:
+        """
+        Update the liked status for a specific object.
+        
+        Args:
+            object_name: The name of the object to update
+            liked: True if liked, False otherwise
+            
+        Returns:
+            bool: True if update successful, False otherwise
+        """
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                # First, ensure the liked column exists
+                cursor.execute("PRAGMA table_info(Main)")
+                columns = [row[1] for row in cursor.fetchall()]
+                
+                if 'liked' not in columns:
+                    self.logger.info("Adding 'liked' column to Main table")
+                    cursor.execute("ALTER TABLE Main ADD COLUMN liked INTEGER DEFAULT 0")
+                    conn.commit()
+                
+                # Update the liked status
+                cursor.execute(
+                    """UPDATE Main 
+                       SET liked = ? 
+                       WHERE [Imm Deep Sky Compendium -  2023 - 4th Edition] = ?""",
+                    (1 if liked else 0, object_name)
+                )
+                conn.commit()
+                self.logger.info(f"Updated liked status for '{object_name}' to {liked}")
+                return True
+        except Exception as e:
+            self.logger.error(f"Error updating liked status for '{object_name}': {e}")
+            return False
+    
+    def get_liked_status(self, object_name: str) -> bool:
+        """
+        Get the liked status for a specific object.
+        
+        Args:
+            object_name: The name of the object
+            
+        Returns:
+            bool: True if liked, False otherwise
+        """
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                # Check if liked column exists
+                cursor.execute("PRAGMA table_info(Main)")
+                columns = [row[1] for row in cursor.fetchall()]
+                
+                if 'liked' not in columns:
+                    return False
+                
+                cursor.execute(
+                    """SELECT liked FROM Main 
+                       WHERE [Imm Deep Sky Compendium -  2023 - 4th Edition] = ?""",
+                    (object_name,)
+                )
+                result = cursor.fetchone()
+                return bool(result[0]) if result and result[0] else False
+        except Exception as e:
+            self.logger.error(f"Error getting liked status for '{object_name}': {e}")
+            return False
+    
     def _create_indexes(self, conn: sqlite3.Connection):
         """Create indexes for better query performance."""
         try:
