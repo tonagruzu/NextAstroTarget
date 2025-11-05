@@ -7,12 +7,14 @@ from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QPushButton, QLabel, QFrame, QSplitter, QGroupBox, QComboBox,
     QSpinBox, QDoubleSpinBox, QTimeEdit, QDateEdit, QScrollArea, QStatusBar,
-    QMessageBox, QDockWidget, QLineEdit, QTextEdit, QCheckBox, QDialog, QDialogButtonBox
+    QMessageBox, QDockWidget, QLineEdit, QTextEdit, QCheckBox, QDialog, QDialogButtonBox,
+    QFileDialog
 )
 from PySide6.QtCore import Qt, QTime, QDate, QTimer, Signal, Slot, QObject
 from PySide6.QtGui import QFont, QPalette, QColor, QIcon, QPainter, QBrush, QPen, QPixmap, QImage
 from datetime import datetime, timedelta
 import logging
+import shutil
 from typing import Optional, Dict, Any
 from pathlib import Path
 import configparser
@@ -1411,6 +1413,132 @@ class ModernMainWindow(QMainWindow):
         self.log_handler = log_handler
     
     @Slot()
+    def backup_database(self):
+        """Create a backup of the database to user-selected location."""
+        try:
+            # Get database path
+            db_path = self.db_manager.db_path
+            
+            if not os.path.exists(db_path):
+                QMessageBox.warning(self, "Backup Error", 
+                                  "Database file not found. Cannot create backup.")
+                self.logger.error("Cannot backup: database file does not exist")
+                return
+            
+            # Suggest default filename with timestamp
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            default_name = f"astro_targets_backup_{timestamp}.db"
+            
+            # Open file save dialog
+            file_path, _ = QFileDialog.getSaveFileName(
+                self,
+                "Save Database Backup",
+                default_name,
+                "SQLite Database (*.db);;All Files (*.*)"
+            )
+            
+            if file_path:
+                # Copy database file to selected location
+                shutil.copy2(db_path, file_path)
+                
+                # Get file size for confirmation
+                file_size = os.path.getsize(file_path) / (1024 * 1024)  # Convert to MB
+                
+                QMessageBox.information(
+                    self, 
+                    "Backup Successful", 
+                    f"Database backed up successfully!\n\n"
+                    f"Location: {file_path}\n"
+                    f"Size: {file_size:.2f} MB"
+                )
+                self.logger.info(f"Database backed up to: {file_path}")
+                
+        except Exception as e:
+            QMessageBox.critical(self, "Backup Error", 
+                               f"Failed to create backup:\n{str(e)}")
+            self.logger.error(f"Database backup failed: {e}")
+    
+    @Slot()
+    def restore_database(self):
+        """Restore database from a backup file."""
+        try:
+            # Warn user about overwriting current database
+            reply = QMessageBox.question(
+                self,
+                "Restore Database",
+                "⚠️ WARNING: This will replace your current database with the backup.\n\n"
+                "All current data will be overwritten. This action cannot be undone.\n\n"
+                "It is recommended to create a backup of your current database first.\n\n"
+                "Do you want to continue?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No
+            )
+            
+            if reply != QMessageBox.Yes:
+                self.logger.info("Database restore cancelled by user")
+                return
+            
+            # Open file dialog to select backup file
+            file_path, _ = QFileDialog.getOpenFileName(
+                self,
+                "Select Database Backup File",
+                "",
+                "SQLite Database (*.db);;All Files (*.*)"
+            )
+            
+            if not file_path:
+                return
+            
+            # Verify it's a valid SQLite database
+            if not self._verify_database_file(file_path):
+                QMessageBox.critical(
+                    self, 
+                    "Invalid Backup", 
+                    "The selected file does not appear to be a valid SQLite database backup."
+                )
+                self.logger.error(f"Invalid database file selected: {file_path}")
+                return
+            
+            # Get current database path
+            db_path = self.db_manager.db_path
+            
+            # Close any active database connections
+            self.logger.info("Closing database connections for restore...")
+            
+            # Copy backup file to database location
+            shutil.copy2(file_path, db_path)
+            
+            QMessageBox.information(
+                self,
+                "Restore Successful",
+                "Database restored successfully!\n\n"
+                "The application will now refresh to load the restored data."
+            )
+            self.logger.info(f"Database restored from: {file_path}")
+            
+            # Refresh the application to load new data
+            self.refresh_all_data()
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Restore Error", 
+                               f"Failed to restore database:\n{str(e)}")
+            self.logger.error(f"Database restore failed: {e}")
+    
+    def _verify_database_file(self, file_path: str) -> bool:
+        """Verify that a file is a valid SQLite database."""
+        try:
+            import sqlite3
+            conn = sqlite3.connect(file_path)
+            cursor = conn.cursor()
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+            tables = cursor.fetchall()
+            conn.close()
+            return len(tables) > 0
+        except Exception as e:
+            self.logger.error(f"Database verification failed: {e}")
+            return False
+    
+    @Slot()
     def show_settings_dialog(self):
         """Show settings dialog for application preferences."""
         dialog = QDialog(self)
@@ -1440,6 +1568,86 @@ class ModernMainWindow(QMainWindow):
         log_layout.addWidget(log_info)
         
         layout.addWidget(log_group)
+        
+        # Database backup/restore section
+        db_group = QGroupBox("💾 Database Backup & Restore")
+        db_layout = QVBoxLayout(db_group)
+        db_layout.setSpacing(10)
+        
+        # Info text
+        db_info = QLabel(
+            "Create backups of your database to preserve your favorites and custom data.\n"
+            "Restore from a backup to recover previous database states."
+        )
+        db_info.setWordWrap(True)
+        db_info.setStyleSheet("color: #e0e0e0; font-size: 10pt;")
+        db_layout.addWidget(db_info)
+        
+        # Buttons layout
+        db_buttons_layout = QHBoxLayout()
+        db_buttons_layout.setSpacing(10)
+        
+        # Backup button
+        backup_btn = QPushButton("📦 Create Backup")
+        backup_btn.setFixedHeight(36)
+        backup_btn.setMinimumWidth(150)
+        backup_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2E7D32;
+                color: white;
+                font-weight: bold;
+                border: 1px solid #1B5E20;
+                border-radius: 4px;
+                padding: 6px 12px;
+                font-size: 11pt;
+            }
+            QPushButton:hover {
+                background-color: #388E3C;
+                border: 1px solid #2E7D32;
+            }
+            QPushButton:pressed {
+                background-color: #1B5E20;
+            }
+        """)
+        backup_btn.setToolTip("Save a copy of the database to a location of your choice")
+        backup_btn.clicked.connect(self.backup_database)
+        db_buttons_layout.addWidget(backup_btn)
+        
+        # Restore button
+        restore_btn = QPushButton("📥 Restore from Backup")
+        restore_btn.setFixedHeight(36)
+        restore_btn.setMinimumWidth(150)
+        restore_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #F57C00;
+                color: white;
+                font-weight: bold;
+                border: 1px solid #E65100;
+                border-radius: 4px;
+                padding: 6px 12px;
+                font-size: 11pt;
+            }
+            QPushButton:hover {
+                background-color: #FB8C00;
+                border: 1px solid #F57C00;
+            }
+            QPushButton:pressed {
+                background-color: #E65100;
+            }
+        """)
+        restore_btn.setToolTip("Replace current database with a backup file (use with caution!)")
+        restore_btn.clicked.connect(self.restore_database)
+        db_buttons_layout.addWidget(restore_btn)
+        
+        db_layout.addLayout(db_buttons_layout)
+        
+        # Warning message
+        warning_label = QLabel("⚠️ Always create a backup before restoring to avoid data loss!")
+        warning_label.setStyleSheet("color: #FF9800; font-size: 9pt; font-style: italic; font-weight: bold;")
+        warning_label.setWordWrap(True)
+        db_layout.addWidget(warning_label)
+        
+        layout.addWidget(db_group)
         
         # Spacer
         layout.addStretch()
