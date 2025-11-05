@@ -354,6 +354,25 @@ class ModernMainWindow(QMainWindow):
         self.help_btn = QPushButton("❓ Help")
         self.exit_btn = QPushButton("🚪 Exit")
         
+        # Style the Exit button with light red background and white text
+        self.exit_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #FFB3BA;
+                color: #8B0000;
+                font-weight: bold;
+                border: 1px solid #FF8A8A;
+                border-radius: 4px;
+                padding: 4px 8px;
+            }
+            QPushButton:hover {
+                background-color: #FF9999;
+                border: 1px solid #FF6666;
+            }
+            QPushButton:pressed {
+                background-color: #FF7777;
+            }
+        """)
+        
         for btn in [self.refresh_btn, self.settings_btn, self.help_btn, self.exit_btn]:
             btn.setFixedHeight(30)
             btn.setMinimumWidth(110)
