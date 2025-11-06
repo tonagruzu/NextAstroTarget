@@ -1029,7 +1029,8 @@ class ModernMainWindow(QMainWindow):
             target_gui = PySide6TargetSelectionGUI(
                 self.object_data_container,
                 self.db_manager,
-                self.observatory
+                self.observatory,
+                self.observation_datetime  # Pass observation datetime for altitude calculations
             )
             layout.addWidget(target_gui)
             self.current_screen = target_gui
@@ -1147,9 +1148,15 @@ class ModernMainWindow(QMainWindow):
         # Refresh calculations if target screen exists
         if self.current_screen:
             try:
+                self.logger.info(f"Updating target screen with new observation datetime: {self.observation_datetime}")
                 self.current_screen.update_astronomical_calculations()
-            except AttributeError:
-                pass
+                self.logger.info("Target screen astronomical calculations updated successfully")
+            except AttributeError as e:
+                self.logger.warning(f"Current screen doesn't have update_astronomical_calculations method: {e}")
+            except Exception as e:
+                self.logger.error(f"Error updating astronomical calculations: {e}")
+        else:
+            self.logger.warning("No current_screen to update")
     
     @Slot()
     def geocode_address(self):

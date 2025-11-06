@@ -30,11 +30,12 @@ class PySide6TargetSelectionGUI(QWidget):
     
     object_selected = Signal(dict)  # Signal emitted when object is selected
     
-    def __init__(self, parent, db_manager: DatabaseManager, observatory: Dict):
+    def __init__(self, parent, db_manager: DatabaseManager, observatory: Dict, observation_datetime: datetime = None):
         super().__init__(parent)
         
         self.db_manager = db_manager
         self.observatory = observatory
+        self.observation_datetime = observation_datetime if observation_datetime else datetime.utcnow()
         self.logger = logging.getLogger(__name__)
         self.astro_calc = AstronomicalCalculator()
         
@@ -262,6 +263,10 @@ class PySide6TargetSelectionGUI(QWidget):
             
     def update_table_display(self):
         """Update table with current filtered objects."""
+        # Log the observation datetime being used for calculations
+        obs_time_str = self.observation_datetime.strftime('%Y-%m-%d %H:%M')
+        self.logger.info(f"Updating table display with observation datetime: {obs_time_str}")
+        
         self.table.setSortingEnabled(False)  # Disable while updating
         self.table.setRowCount(0)
         
@@ -301,10 +306,11 @@ class PySide6TargetSelectionGUI(QWidget):
                 
         self.table.setSortingEnabled(True)
         
-        # Update count
+        # Update count with observation time indicator
         total = len(self.filtered_objects)
         shown = min(total, 1000)
-        self.count_label.setText(f"📊 Showing {shown} of {total} objects")
+        obs_time_str = self.observation_datetime.strftime('%H:%M')
+        self.count_label.setText(f"📊 Showing {shown} of {total} objects | ⏰ Obs. Time: {obs_time_str}")
         
     def set_table_item(self, row, col, text, alignment=None):
         """Set table item with proper formatting.
@@ -383,35 +389,49 @@ class PySide6TargetSelectionGUI(QWidget):
             # Convert RA degrees to hours
             ra_hours = ra_deg_float / 15.0
             
-            # Calculate current altitude
-            current_time = datetime.now()
+            # Use observation datetime for altitude calculations (use UTC for astronomical calculations)
+            # Convert to UTC if observation_datetime is timezone-naive local time
+            if self.observation_datetime.tzinfo is None:
+                # Assume it's local time, convert to UTC
+                # Note: This is a simple approach. For accurate timezone handling, use pytz or zoneinfo
+                from datetime import timedelta
+                # Poland is typically UTC+1 (CET) or UTC+2 (CEST)
+                # For now, use the observatory's GMT offset if available
+                gmt_offset = self.observatory.get('gmt_offset', 1)  # Default to UTC+1 for Poland
+                obs_time_utc = self.observation_datetime - timedelta(hours=gmt_offset)
+            else:
+                obs_time_utc = self.observation_datetime
+            
             altitude, _ = self.astro_calc.calculate_altitude_azimuth(
-                ra_hours, dec_deg_float, current_time,
+                ra_hours, dec_deg_float, obs_time_utc,
                 self.observatory['latitude'], self.observatory['longitude']
             )
             
-            # Calculate altitude at +1h, +2h, +3h
-            from datetime import timedelta
+            # Calculate altitude at +1h, +2h, +3h from observation time
             altitude_1h, _ = self.astro_calc.calculate_altitude_azimuth(
-                ra_hours, dec_deg_float, current_time + timedelta(hours=1),
+                ra_hours, dec_deg_float, obs_time_utc + timedelta(hours=1),
                 self.observatory['latitude'], self.observatory['longitude']
             )
             altitude_2h, _ = self.astro_calc.calculate_altitude_azimuth(
-                ra_hours, dec_deg_float, current_time + timedelta(hours=2),
+                ra_hours, dec_deg_float, obs_time_utc + timedelta(hours=2),
                 self.observatory['latitude'], self.observatory['longitude']
             )
             altitude_3h, _ = self.astro_calc.calculate_altitude_azimuth(
-                ra_hours, dec_deg_float, current_time + timedelta(hours=3),
+                ra_hours, dec_deg_float, obs_time_utc + timedelta(hours=3),
                 self.observatory['latitude'], self.observatory['longitude']
             )
             
             # Calculate transit time
             transit_time = self.astro_calc.calculate_transit_time(
-                ra_hours, self.observatory['longitude'], current_time.date()
+                ra_hours, self.observatory['longitude'], obs_time_utc.date()
             )
             
+            # Convert transit time from UTC to local time for display
+            gmt_offset = self.observatory.get('gmt_offset', 1)
+            transit_time_local = transit_time + timedelta(hours=gmt_offset)
+            
             return (
-                transit_time.strftime('%H:%M'),
+                transit_time_local.strftime('%H:%M'),
                 f"{altitude:.1f}°",
                 f"{altitude_1h:.1f}°",
                 f"{altitude_2h:.1f}°",
@@ -601,19 +621,30 @@ class PySide6TargetSelectionGUI(QWidget):
             # Convert RA from degrees to hours
             ra_hours = float(ra_deg) / 15.0
             
-            # Calculate transit time
-            current_dt = datetime.now()
+            # Calculate transit time using observation datetime
+            # Convert to UTC if needed
+            if self.observation_datetime.tzinfo is None:
+                from datetime import timedelta
+                gmt_offset = self.observatory.get('gmt_offset', 1)
+                obs_time_utc = self.observation_datetime - timedelta(hours=gmt_offset)
+            else:
+                obs_time_utc = self.observation_datetime
+            
             transit_time = self.astro_calc.calculate_transit_time(
                 ra_hours,
                 self.observatory['longitude'],
-                current_dt.date()
+                obs_time_utc.date()
             )
             
             if not transit_time:
                 return False
             
-            # Get transit time as HH:MM
-            transit_str = transit_time.strftime("%H:%M")
+            # Convert transit time from UTC to local time for comparison with user input
+            gmt_offset = self.observatory.get('gmt_offset', 1)
+            transit_time_local = transit_time + timedelta(hours=gmt_offset)
+            
+            # Get transit time as HH:MM (local time)
+            transit_str = transit_time_local.strftime("%H:%M")
             
             # Parse times to minutes
             start_hour, start_min = map(int, start_time.split(':'))
@@ -1460,5 +1491,11 @@ StelMovementMgr.zoomTo(45, 1);
         
     def update_astronomical_calculations(self):
         """Update astronomical calculations for visible objects."""
-        # TODO: Calculate transit times and altitudes
-        pass
+        # Get the updated observation datetime from parent main window
+        parent_window = self.window()
+        if hasattr(parent_window, 'observation_datetime'):
+            self.observation_datetime = parent_window.observation_datetime
+            self.logger.info(f"Updated observation datetime to {self.observation_datetime}")
+        
+        # Refresh the table to recalculate altitudes with new time
+        self.update_table_display()
