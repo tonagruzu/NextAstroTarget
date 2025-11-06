@@ -156,7 +156,6 @@ class PySide6TargetSelectionGUI(QWidget):
             
             QTableWidget::item {
                 padding: 8px;
-                color: #e0e0e0;
             }
             
             QTableWidget::item:selected {
@@ -340,6 +339,10 @@ class PySide6TargetSelectionGUI(QWidget):
                 alignment = Qt.AlignCenter | Qt.AlignVCenter
         
         item.setTextAlignment(alignment)
+        
+        # Set default text color (light gray for dark theme)
+        item.setForeground(QColor(224, 224, 224))  # #e0e0e0
+        
         self.table.setItem(row, col, item)
     
     def set_moon_index_item(self, row, col, moon_idx_str):
@@ -409,9 +412,13 @@ class PySide6TargetSelectionGUI(QWidget):
             
             # Use black text on bright backgrounds, white text on dark backgrounds
             if luminance > 0.6:  # Bright background
-                item.setForeground(QColor(0, 0, 0))  # Black text
+                text_color = QColor(0, 0, 0)  # Black text
             else:  # Dark background
-                item.setForeground(QColor(255, 255, 255))  # White text
+                text_color = QColor(255, 255, 255)  # White text
+            
+            item.setForeground(text_color)
+            # Also set as data to override stylesheet
+            item.setData(Qt.ForegroundRole, text_color)
                 
         except ValueError:
             # If parsing fails, use default (no color)
