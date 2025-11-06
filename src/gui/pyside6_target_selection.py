@@ -103,7 +103,8 @@ class PySide6TargetSelectionGUI(QWidget):
         columns = [
             "❤️", "Object", "Nick", "Type", "Subtype", "Constellation",
             "RA", "Dec", "Size", "Magnitude", "Rating",
-            "Transit", "Altitude", "Alt +1h", "Alt +2h", "Alt +3h"
+            "Transit", "Altitude", "Alt +1h", "Alt +2h", "Alt +3h",
+            "Moon Sep.", "Moon Idx"
         ]
         
         self.table.setColumnCount(len(columns))
@@ -127,6 +128,8 @@ class PySide6TargetSelectionGUI(QWidget):
         self.table.setColumnWidth(10, 120)  # Rating column - wide enough for 5 stars (⭐⭐⭐⭐⭐)
         self.table.setColumnWidth(14, 80)  # Alt +2h column - fixed width
         self.table.setColumnWidth(15, 80)  # Alt +3h column - same width as Alt +2h
+        self.table.setColumnWidth(16, 90)  # Moon Sep. column
+        self.table.setColumnWidth(17, 80)  # Moon Idx column
         
         # Context menu
         self.table.setContextMenuPolicy(Qt.CustomContextMenu)
@@ -291,13 +294,17 @@ class PySide6TargetSelectionGUI(QWidget):
             self.set_table_item(row, 9, obj.get('magnitude', ''))
             self.set_table_item(row, 10, self.format_rating(obj.get('rating')))
             
-            # Calculate transit time and altitude (including +1h, +2h, +3h)
-            transit_time, altitude, altitude_1h, altitude_2h, altitude_3h = self.calculate_astronomical_data(obj)
+            # Calculate transit time, altitude (including +1h, +2h, +3h), moon separation and index
+            transit_time, altitude, altitude_1h, altitude_2h, altitude_3h, moon_sep, moon_idx = self.calculate_astronomical_data(obj)
             self.set_table_item(row, 11, transit_time)
             self.set_table_item(row, 12, altitude)
             self.set_table_item(row, 13, altitude_1h)
             self.set_table_item(row, 14, altitude_2h)
             self.set_table_item(row, 15, altitude_3h)
+            self.set_table_item(row, 16, moon_sep)
+            
+            # Moon Index with color coding
+            self.set_moon_index_item(row, 17, moon_idx)
             
             # Store object data in Object column (now column 1)
             item = self.table.item(row, 1)
@@ -333,6 +340,78 @@ class PySide6TargetSelectionGUI(QWidget):
                 alignment = Qt.AlignCenter | Qt.AlignVCenter
         
         item.setTextAlignment(alignment)
+        self.table.setItem(row, col, item)
+    
+    def set_moon_index_item(self, row, col, moon_idx_str):
+        """Set moon index item with color coding.
+        
+        Args:
+            row: Row index
+            col: Column index
+            moon_idx_str: Moon index as string (e.g., "19.9")
+        
+        Color coding matches spreadsheet:
+        - Red (poor): 0-30 (moon bright and close)
+        - White (neutral): 30-70
+        - Blue (good): 70-100 (moon dark or far)
+        """
+        item = QTableWidgetItem(moon_idx_str)
+        item.setTextAlignment(Qt.AlignCenter | Qt.AlignVCenter)
+        
+        try:
+            # Parse moon index value
+            moon_idx = float(moon_idx_str)
+            
+            # Apply color gradient based on index value
+            # Red (#F8696B) at 15, White (#FCFCFF) at 50, Blue (#5A8AC6) at 85
+            if moon_idx <= 15:
+                # Dark red for worst conditions
+                color = QColor(248, 105, 107)
+            elif moon_idx <= 30:
+                # Interpolate from red to pink
+                t = (moon_idx - 15) / 15.0
+                r = int(248 + (252 - 248) * t)
+                g = int(105 + (180 - 105) * t)
+                b = int(107 + (180 - 107) * t)
+                color = QColor(r, g, b)
+            elif moon_idx <= 50:
+                # Interpolate from pink to white
+                t = (moon_idx - 30) / 20.0
+                r = int(252 + (252 - 252) * t)
+                g = int(180 + (252 - 180) * t)
+                b = int(180 + (255 - 180) * t)
+                color = QColor(r, g, b)
+            elif moon_idx <= 70:
+                # Interpolate from white to light blue
+                t = (moon_idx - 50) / 20.0
+                r = int(252 - (252 - 150) * t)
+                g = int(252 - (252 - 180) * t)
+                b = int(255 - (255 - 220) * t)
+                color = QColor(r, g, b)
+            elif moon_idx <= 85:
+                # Interpolate from light blue to blue
+                t = (moon_idx - 70) / 15.0
+                r = int(150 - (150 - 90) * t)
+                g = int(180 - (180 - 138) * t)
+                b = int(220 - (220 - 198) * t)
+                color = QColor(r, g, b)
+            else:
+                # Dark blue for best conditions
+                color = QColor(90, 138, 198)
+            
+            # Set background color
+            item.setBackground(color)
+            
+            # Set text color for readability (dark text for light backgrounds)
+            if moon_idx > 40 and moon_idx < 70:
+                item.setForeground(QColor(0, 0, 0))  # Black text
+            else:
+                item.setForeground(QColor(255, 255, 255))  # White text
+                
+        except ValueError:
+            # If parsing fails, use default (no color)
+            pass
+        
         self.table.setItem(row, col, item)
         
     def format_ra(self, ra_degrees):
@@ -375,13 +454,13 @@ class PySide6TargetSelectionGUI(QWidget):
             return ""
             
     def calculate_astronomical_data(self, obj: Dict) -> tuple:
-        """Calculate transit time and altitude for an object at current time and +1h, +2h, +3h."""
+        """Calculate transit time, altitude, moon separation, and moon index for an object."""
         try:
             ra_deg = obj.get('ra_degrees')
             dec_deg = obj.get('dec_degrees')
             
             if ra_deg is None or dec_deg is None:
-                return ("--:--", "--°", "--°", "--°", "--°")
+                return ("--:--", "--°", "--°", "--°", "--°", "--°", "--")
                 
             ra_deg_float = float(ra_deg)
             dec_deg_float = float(dec_deg)
@@ -430,17 +509,33 @@ class PySide6TargetSelectionGUI(QWidget):
             gmt_offset = self.observatory.get('gmt_offset', 1)
             transit_time_local = transit_time + timedelta(hours=gmt_offset)
             
+            # Calculate moon separation and index
+            moon_separation = self.astro_calc.calculate_moon_separation(
+                ra_hours, dec_deg_float, obs_time_utc
+            )
+            
+            # Get moon phase for index calculation
+            moon_phase = self.astro_calc.calculate_moon_phase(obs_time_utc)
+            moon_illumination = moon_phase['illumination']
+            
+            # Calculate moon index
+            moon_index = self.astro_calc.calculate_moon_index(
+                moon_separation, moon_illumination
+            )
+            
             return (
                 transit_time_local.strftime('%H:%M'),
                 f"{altitude:.1f}°",
                 f"{altitude_1h:.1f}°",
                 f"{altitude_2h:.1f}°",
-                f"{altitude_3h:.1f}°"
+                f"{altitude_3h:.1f}°",
+                f"{moon_separation:.1f}°",
+                f"{moon_index:.1f}"
             )
             
         except Exception as e:
             self.logger.debug(f"Error calculating astronomical data: {e}")
-            return ("--:--", "--°", "--°", "--°", "--°")
+            return ("--:--", "--°", "--°", "--°", "--°", "--°", "--")
             
     @Slot(str)
     def on_search_changed(self, text):

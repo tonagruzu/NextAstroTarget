@@ -519,6 +519,81 @@ class AstronomicalCalculator:
             self.logger.error(f"Error calculating transit time: {e}")
             return datetime.combine(target_date, datetime.min.time().replace(hour=12))
     
+    def get_moon_ra_dec(self, dt: datetime) -> Tuple[float, float]:
+        """
+        Calculate moon's Right Ascension and Declination at given time.
+        
+        Args:
+            dt: Observation datetime
+            
+        Returns:
+            Tuple of (RA in hours, Dec in degrees)
+        """
+        try:
+            jd = self.julian_day(dt)
+            t = (jd - self.J2000) / 36525.0
+            
+            # Moon's mean longitude
+            L0 = (218.3164477 + 481267.88123421 * t) % 360
+            
+            # Moon's mean elongation
+            D = (297.8501921 + 445267.1114034 * t) % 360
+            
+            # Sun's mean anomaly
+            M = (357.5291092 + 35999.0502909 * t) % 360
+            
+            # Moon's mean anomaly
+            M1 = (134.9633964 + 477198.8675055 * t) % 360
+            
+            # Argument of latitude
+            F = (93.2720950 + 483202.0175233 * t) % 360
+            
+            # Convert to radians
+            L0_rad = math.radians(L0)
+            D_rad = math.radians(D)
+            M_rad = math.radians(M)
+            M1_rad = math.radians(M1)
+            F_rad = math.radians(F)
+            
+            # Moon's longitude (with perturbations)
+            lambda_moon = L0 + 6.289 * math.sin(M1_rad)
+            lambda_moon += 1.274 * math.sin(2 * D_rad - M1_rad)
+            lambda_moon += 0.658 * math.sin(2 * D_rad)
+            lambda_moon_rad = math.radians(lambda_moon % 360)
+            
+            # Moon's latitude
+            beta_moon = 5.128 * math.sin(F_rad)
+            beta_moon += 0.281 * math.sin(M1_rad + F_rad)
+            beta_moon_rad = math.radians(beta_moon)
+            
+            # Convert to equatorial coordinates (RA/Dec)
+            obliquity = math.radians(23.4393 - 0.0130042 * t)
+            
+            ra_rad = math.atan2(
+                math.sin(lambda_moon_rad) * math.cos(obliquity) - 
+                math.tan(beta_moon_rad) * math.sin(obliquity),
+                math.cos(lambda_moon_rad)
+            )
+            
+            dec_rad = math.asin(
+                math.sin(beta_moon_rad) * math.cos(obliquity) +
+                math.cos(beta_moon_rad) * math.sin(obliquity) * math.sin(lambda_moon_rad)
+            )
+            
+            # Convert RA to hours (0-24) and normalize
+            ra_hours = (ra_rad * self.RADIANS_TO_DEGREES / 15.0) % 24
+            if ra_hours < 0:
+                ra_hours += 24
+            
+            # Dec in degrees (-90 to +90)
+            dec_degrees = dec_rad * self.RADIANS_TO_DEGREES
+            
+            return ra_hours, dec_degrees
+            
+        except Exception as e:
+            self.logger.error(f"Error calculating moon RA/Dec: {e}")
+            return 0.0, 0.0
+    
     def calculate_moon_separation(self, ra_hours: float, dec_degrees: float, 
                                 dt: datetime) -> float:
         """
@@ -533,22 +608,14 @@ class AstronomicalCalculator:
             Angular separation in degrees
         """
         try:
-            # This is a simplified calculation
-            # In reality, would need moon's RA/Dec at the given time
-            
-            jd = self.julian_day(dt)
-            t = (jd - self.J2000) / 36525.0
-            
-            # Approximate moon RA/Dec (simplified)
-            moon_L = (218.3164477 + 481267.88123421 * t) % 360
-            moon_ra_hours = moon_L / 15.0
-            moon_dec = 0.0  # Simplified - moon dec varies
+            # Get moon's RA/Dec at observation time
+            moon_ra_hours, moon_dec_degrees = self.get_moon_ra_dec(dt)
             
             # Calculate angular separation using spherical trigonometry
             ra1_rad = math.radians(ra_hours * 15)
             dec1_rad = math.radians(dec_degrees)
             ra2_rad = math.radians(moon_ra_hours * 15)
-            dec2_rad = math.radians(moon_dec)
+            dec2_rad = math.radians(moon_dec_degrees)
             
             # Haversine formula for great circle distance
             dra = ra2_rad - ra1_rad
@@ -614,3 +681,50 @@ class AstronomicalCalculator:
                 'moon_separation': 0.0,
                 'good_moon_separation': False
             }
+    
+    def calculate_moon_index(self, separation_degrees: float, moon_illumination: float) -> float:
+        """
+        Calculate moon interference index (0-100) based on separation and phase.
+        Lower values indicate worse conditions (moon interference).
+        Higher values indicate better conditions for observation.
+        
+        Formula matches Excel spreadsheet logic:
+        - High illumination (>80%) with close moon = very poor (0-30)
+        - Low illumination (<20%) or distant moon = good (70-100)
+        
+        Args:
+            separation_degrees: Angular separation between object and moon (0-180)
+            moon_illumination: Moon illumination percentage (0-100)
+            
+        Returns:
+            Moon index value (0-100), clamped to max 100
+        """
+        try:
+            # Normalize separation to 0-100 scale
+            sep_normalized = separation_degrees / 100.0
+            
+            # Excel formula logic - penalties increase with moon brightness
+            if moon_illumination > 80:
+                index = 0 + 30 * sep_normalized
+            elif moon_illumination > 70:
+                index = 0 + 50 * sep_normalized
+            elif moon_illumination > 60:
+                index = 5 + 50 * sep_normalized
+            elif moon_illumination > 50:
+                index = 10 + 60 * sep_normalized
+            elif moon_illumination > 40:
+                index = 15 + 70 * sep_normalized
+            elif moon_illumination > 30:
+                index = 20 + 70 * sep_normalized
+            elif moon_illumination > 20:
+                index = 40 + 55 * sep_normalized
+            else:
+                # Dark moon - best conditions
+                index = 80 + (20 - moon_illumination) + 30 * sep_normalized
+            
+            # Clamp to 0-100 range
+            return max(0, min(100, index))
+            
+        except Exception as e:
+            self.logger.error(f"Error calculating moon index: {e}")
+            return 50.0  # Default to neutral value
