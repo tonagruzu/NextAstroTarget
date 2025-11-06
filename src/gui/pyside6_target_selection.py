@@ -402,10 +402,15 @@ class PySide6TargetSelectionGUI(QWidget):
             # Set background color
             item.setBackground(color)
             
-            # Set text color for readability (dark text for light backgrounds)
-            if moon_idx > 40 and moon_idx < 70:
+            # Set text color for readability based on background luminance
+            # Calculate relative luminance: https://www.w3.org/TR/WCAG20/#relativeluminancedef
+            r, g, b = color.red(), color.green(), color.blue()
+            luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255.0
+            
+            # Use black text on bright backgrounds, white text on dark backgrounds
+            if luminance > 0.6:  # Bright background
                 item.setForeground(QColor(0, 0, 0))  # Black text
-            else:
+            else:  # Dark background
                 item.setForeground(QColor(255, 255, 255))  # White text
                 
         except ValueError:
