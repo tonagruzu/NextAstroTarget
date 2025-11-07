@@ -30,9 +30,17 @@ if ($LASTEXITCODE -ne 0) {
 
 # Check if database exists
 if (-not (Test-Path "targets.db")) {
+    Write-Host ""
     Write-Host "WARNING: targets.db not found!" -ForegroundColor Yellow
-    Write-Host "The executable will be built but won't have the database." -ForegroundColor Yellow
-    $continue = Read-Host "Continue anyway? (y/n)"
+    Write-Host "The executable will be built without the database." -ForegroundColor Yellow
+    Write-Host "Users will need to create the database on first run." -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "To include the database in the .exe:" -ForegroundColor Cyan
+    Write-Host "  1. Run the app once to create targets.db" -ForegroundColor Gray
+    Write-Host "  2. Import data from Excel spreadsheet" -ForegroundColor Gray
+    Write-Host "  3. Then rebuild the .exe" -ForegroundColor Gray
+    Write-Host ""
+    $continue = Read-Host "Continue building without database? (y/n)"
     if ($continue -ne "y") {
         Write-Host "Build cancelled." -ForegroundColor Yellow
         exit 0

@@ -12,20 +12,29 @@ block_cipher = None
 # Get the project root directory
 project_root = Path('.').absolute()
 
+# Build list of data files, checking if they exist
+datas = []
+
+# Add database if it exists
+if Path('targets.db').exists():
+    datas.append(('targets.db', '.'))
+    
+# Add config directory if it exists
+if Path('config').exists():
+    datas.append(('config', 'config'))
+    
+# Add icons directory if it exists
+if Path('icons').exists():
+    datas.append(('icons', 'icons'))
+    
+# Add src package (required)
+datas.append(('src', 'src'))
+
 a = Analysis(
     ['main_pyside6.py'],
     pathex=[str(project_root)],
     binaries=[],
-    datas=[
-        # Include the database file
-        ('targets.db', '.'),
-        # Include config directory
-        ('config', 'config'),
-        # Include icons if they exist
-        ('icons', 'icons') if Path('icons').exists() else None,
-        # Include src package
-        ('src', 'src'),
-    ],
+    datas=datas,
     hiddenimports=[
         'PySide6.QtCore',
         'PySide6.QtGui',
@@ -54,9 +63,6 @@ a = Analysis(
     cipher=block_cipher,
     noarchive=False,
 )
-
-# Remove None entries from datas
-a.datas = [d for d in a.datas if d is not None]
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
