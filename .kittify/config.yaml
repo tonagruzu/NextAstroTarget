@@ -1,0 +1,11 @@
+vcs:
+  type: git
+agents:
+  available:
+  - copilot
+  auto_commit: true
+project:
+  uuid: f9858fbc-9d54-4901-9048-7f5acfe3b6ef
+  slug: nextastrotarget
+  node_id: 80eb4b7ae515
+  build_id: 7028cd00-d890-4f2c-bae8-1b29926923c6

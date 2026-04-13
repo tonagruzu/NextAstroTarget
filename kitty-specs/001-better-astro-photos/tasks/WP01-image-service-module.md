@@ -9,6 +9,9 @@ requirement_refs:
 planning_base_branch: main
 merge_target_branch: main
 branch_strategy: Planning artifacts for this feature were generated on main. During /spec-kitty.implement this WP may branch from a dependency-specific base, but completed changes must merge back into main unless the human explicitly redirects the landing branch.
+base_branch: 001-better-astro-photos
+base_commit: 9ef14579324d94ad6a8142f84ac4475c8751cbf2
+created_at: '2026-04-13T18:11:26.698770+00:00'
 subtasks:
 - 'T001: Create src/utils/image_service.py module'
 - 'T002: Implement HiPS2FITS API client'
@@ -18,6 +21,7 @@ subtasks:
 phase: Phase 1 - Core Service
 assignee: ''
 agent: ''
+shell_pid: '8956'
 history:
 - timestamp: '2026-04-13T18:00:00Z'
   agent: system
