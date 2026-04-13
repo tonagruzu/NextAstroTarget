@@ -1,0 +1,23 @@
+{
+  "wp_id": "WP01",
+  "captured_at": "2026-04-13T18:11:30Z",
+  "base_branch": "main",
+  "base_commit": "e1e72440dab6d1528825f82b06d28e0beef7acce",
+  "test_runner": "pytest",
+  "total": 2,
+  "passed": 0,
+  "failed": 2,
+  "skipped": 0,
+  "failures": [
+    {
+      "test": "test_distance_diameter_display",
+      "error": "collection failure",
+      "file": "unknown:?"
+    },
+    {
+      "test": "test_help_dialog",
+      "error": "collection failure",
+      "file": "unknown:?"
+    }
+  ]
+}
