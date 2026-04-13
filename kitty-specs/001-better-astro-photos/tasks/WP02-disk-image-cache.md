@@ -15,7 +15,8 @@ subtasks:
 - 'T004: Create cache directory with .gitignore'
 phase: Phase 2 - Caching
 assignee: ''
-agent: ''
+agent: "copilot"
+shell_pid: "41376"
 history:
 - timestamp: '2026-04-13T18:00:00Z'
   agent: system
@@ -120,3 +121,7 @@ Modify `ImageService.fetch_object_image()`:
 ## Dependencies
 
 - **WP01** — ImageService module must exist.
+
+## Activity Log
+
+- 2026-04-13T18:12:41Z – copilot – shell_pid=41376 – Started implementation via action command
