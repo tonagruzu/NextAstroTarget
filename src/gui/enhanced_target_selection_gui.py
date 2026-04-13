@@ -21,6 +21,7 @@ warnings.filterwarnings('ignore', category=FutureWarning, module='pandas')
 
 from src.database.database_manager import DatabaseManager
 from src.utils.astronomical_calculations import AstronomicalCalculator
+from src.utils.image_service import ImageService
 
 
 class AstrobinTooltip:
@@ -32,6 +33,7 @@ class AstrobinTooltip:
         self.current_object = None
         self.logger = logging.getLogger(__name__)
         self.image_cache = {}  # Cache loaded images
+        self._image_service = ImageService()
         
     def show_tooltip(self, event, object_data, object_name):
         """Show tooltip with Astrobin image and object information."""
@@ -85,22 +87,23 @@ class AstrobinTooltip:
             name_label.pack(anchor='w', pady=(0, 5))
             
             # Try to load images from multiple sources
-            astrobin_id = object_data.get('astrobin_id')
-            self.logger.info(f"Astrobin ID for {object_name}: {astrobin_id}")
+            # Try to load image using ImageService
+            ra_deg = object_data.get('ra_degrees')
+            dec_deg = object_data.get('dec_degrees')
+            diam = object_data.get('size_arcmin')
+            try:
+                diam = float(diam) if diam is not None else None
+            except (ValueError, TypeError):
+                diam = None
+
             image_loaded = False
-            
-            # Try to load image using DSS (coordinates) or Astrobin (if ID available)
-            astrobin_id_clean = "0"  # Default to no Astrobin ID
-            if astrobin_id and pd.notna(astrobin_id):
+            if ra_deg is not None and dec_deg is not None:
                 try:
-                    # Clean the ID
-                    astrobin_id_clean = str(int(float(astrobin_id)))
-                    self.logger.info(f"Found Astrobin ID: {astrobin_id_clean}")
+                    ra_float = float(ra_deg)
+                    dec_float = float(dec_deg)
+                    image_loaded = self._load_image(main_frame, ra_float, dec_float, object_name, diam)
                 except (ValueError, TypeError):
-                    self.logger.debug(f"Invalid Astrobin ID format: {astrobin_id}")
-            
-            # Always try to load image (DSS or Astrobin)
-            image_loaded = self._load_astrobin_image(main_frame, astrobin_id_clean, object_name, object_data)
+                    pass
             
             # If no image loaded, show object information
             if not image_loaded:
@@ -109,206 +112,44 @@ class AstrobinTooltip:
         except Exception as e:
             self.logger.warning(f"Error showing Astrobin tooltip: {e}")
             
-    def _load_astrobin_image(self, parent_frame, astrobin_id, object_name, object_data=None):
-        """Try to load image from multiple sources with fallback."""
-        self.logger.info(f"Loading image for {object_name}, Astrobin ID: {astrobin_id}")
-        
-        # Try multiple image sources in priority order
-        image_sources = []
-        
-        # Try DSS first using coordinates from object_data
-        data = object_data or getattr(self, 'current_tooltip_data', {})
-        ra_deg = data.get('ra_degrees')
-        dec_deg = data.get('dec_degrees')
-        
-        if ra_deg is not None and dec_deg is not None:
-            try:
-                ra_float = float(ra_deg)
-                dec_float = float(dec_deg)
-                if self._load_dss_image(parent_frame, ra_float, dec_float, object_name):
-                    return True
-            except (ValueError, TypeError):
-                self.logger.debug(f"Invalid coordinates for {object_name}: RA={ra_deg}, Dec={dec_deg}")
-        
-        # Try Astrobin as fallback if we have a valid ID
-        if astrobin_id != "0" and astrobin_id.isdigit() and int(astrobin_id) > 0:
-            image_sources.append(
-                ("astrobin", f"https://www.astrobin.com/{astrobin_id}/0/rawthumb/regular/", f"📸 AstroBin ID: {astrobin_id}")
-            )
-        
-        # Process Astrobin sources if available
-        for source_name, url, credit_text in image_sources:
-            try:
-                cache_key = f"{source_name}_{astrobin_id}_{object_name.replace(' ', '_')}"
-                
-                # Check cache first
-                if cache_key in self.image_cache:
-                    photo = self.image_cache[cache_key]
-                    if photo:
-                        self.logger.info(f"Using cached {source_name} image for {object_name}")
-                        image_label = tk.Label(parent_frame, image=photo, bg='black')
-                        image_label.pack(pady=(0, 5))
-                        
-                        # Add credit label
-                        credit_label = tk.Label(
-                            parent_frame,
-                            text=credit_text,
-                            font=("Arial", 8),
-                            bg="black",
-                            fg="gray"
-                        )
-                        credit_label.pack(anchor='w')
-                        return True
-                    else:
-                        continue  # Try next source
-                
-                self.logger.info(f"Fetching {source_name} image from: {url}")
-                
-                headers = {
-                    'User-Agent': 'NextAstroTarget/1.1.0 (Astronomy Application)',
-                    'Accept': 'image/*,*/*;q=0.8'
-                }
-                
-                response = requests.get(url, headers=headers, timeout=8)
-                self.logger.debug(f"{source_name} response status: {response.status_code}")
-                
-                if response.status_code == 200:
-                    # Check if we actually got an image
-                    content_type = response.headers.get('content-type', '')
-                    if 'image' in content_type or source_name == 'dss':  # DSS doesn't always set proper content-type
-                        try:
-                            # Load and resize image
-                            img = Image.open(BytesIO(response.content))
-                            
-                            # Resize image to fit tooltip
-                            img.thumbnail((300, 250), Image.Resampling.LANCZOS)
-                            
-                            # Convert to PhotoImage
-                            photo = ImageTk.PhotoImage(img)
-                            
-                            # Cache the image
-                            self.image_cache[cache_key] = photo
-                            
-                            # Display image
-                            image_label = tk.Label(parent_frame, image=photo, bg='black')
-                            image_label.pack(pady=(0, 5))
-                            
-                            # Add credit label
-                            credit_label = tk.Label(
-                                parent_frame,
-                                text=credit_text,
-                                font=("Arial", 8),
-                                bg="black",
-                                fg="gray"
-                            )
-                            credit_label.pack(anchor='w')
-                            
-                            self.logger.info(f"Successfully loaded {source_name} image for {object_name}")
-                            return True
-                            
-                        except Exception as img_error:
-                            self.logger.debug(f"Failed to process {source_name} image: {img_error}")
-                            # Cache negative result
-                            self.image_cache[cache_key] = None
-                            continue
-                else:
-                    # Cache negative result for this source
-                    self.image_cache[cache_key] = None
-                    continue
-                    
-            except Exception as e:
-                self.logger.debug(f"Failed to load {source_name} image: {e}")
-                # Cache negative result for this source
-                self.image_cache[cache_key] = None
-                continue
-        
-        # If all sources failed, return False
-        self.logger.info(f"No images found for {object_name}")
-        return False
-    
-    def _load_dss_image(self, parent_frame, ra_deg, dec_deg, object_name):
-        """Load image from Digitized Sky Survey using coordinates."""
-        cache_key = f"dss_{ra_deg:.3f}_{dec_deg:.3f}"
-        
-        # Check cache first
+    def _load_image(self, parent_frame, ra_deg, dec_deg, object_name, diameter_arcmin=None):
+        """Load image via ImageService and display in the tooltip frame."""
+        cache_key = f"img_{ra_deg:.3f}_{dec_deg:.3f}"
+
+        # Check in-memory cache
         if cache_key in self.image_cache:
-            photo = self.image_cache[cache_key]
-            if photo:
-                self.logger.info(f"Using cached DSS image for {object_name}")
-                image_label = tk.Label(parent_frame, image=photo, bg='black')
-                image_label.pack(pady=(0, 5))
-                
-                credit_label = tk.Label(
-                    parent_frame,
-                    text="🔭 Digitized Sky Survey",
-                    font=("Arial", 8),
-                    bg="black",
-                    fg="gray"
-                )
-                credit_label.pack(anchor='w')
-                return True
-            else:
-                # Cached negative result
+            cached = self.image_cache[cache_key]
+            if cached is None:
                 return False
-        
-        try:
-            # DSS URL with 12 arcmin field of view (good for most deep sky objects)
-            dss_url = f"https://archive.stsci.edu/cgi-bin/dss_search?v=poss2ukstu_red&r={ra_deg:.6f}&d={dec_deg:.6f}&e=J2000&h=12.0&w=12.0&f=gif&c=none&fov=NONE&v3="
-            
-            self.logger.info(f"Fetching DSS image from: {dss_url[:80]}...")
-            
-            headers = {
-                'User-Agent': 'NextAstroTarget/1.1.0 (Astronomy Application)',
-                'Accept': 'image/gif,image/*,*/*;q=0.8'
-            }
-            
-            response = requests.get(dss_url, headers=headers, timeout=8)
-            self.logger.debug(f"DSS response status: {response.status_code}")
-            
-            if response.status_code == 200 and len(response.content) > 10000:  # Reasonable size check
-                content_type = response.headers.get('content-type', '').lower()
-                if 'image' in content_type:
-                    try:
-                        # Load and resize image
-                        img = Image.open(BytesIO(response.content))
-                        img.thumbnail((300, 250), Image.Resampling.LANCZOS)
-                        
-                        # Convert to PhotoImage
-                        photo = ImageTk.PhotoImage(img)
-                        
-                        # Cache the image
-                        self.image_cache[cache_key] = photo
-                        
-                        # Display image
-                        image_label = tk.Label(parent_frame, image=photo, bg='black')
-                        image_label.pack(pady=(0, 5))
-                        
-                        credit_label = tk.Label(
-                            parent_frame,
-                            text="🔭 Digitized Sky Survey",
-                            font=("Arial", 8),
-                            bg="black",
-                            fg="gray"
-                        )
-                        credit_label.pack(anchor='w')
-                        
-                        self.logger.info(f"Successfully loaded DSS image for {object_name}")
-                        return True
-                        
-                    except Exception as img_error:
-                        self.logger.debug(f"Failed to process DSS image: {img_error}")
-                        self.image_cache[cache_key] = None
-                        return False
-            
-            # Cache negative result
-            self.image_cache[cache_key] = None
-            return False
-                    
-        except Exception as e:
-            self.logger.debug(f"Failed to load DSS image: {e}")
-            self.image_cache[cache_key] = None
-            return False
-    
+            photo, source_label = cached
+            image_label = tk.Label(parent_frame, image=photo, bg='black')
+            image_label.pack(pady=(0, 5))
+            tk.Label(parent_frame, text=f"Source: {source_label}", font=("Arial", 7), bg="black", fg="#888888").pack(anchor='w')
+            return True
+
+        result = self._image_service.fetch_object_image(
+            ra_deg=ra_deg,
+            dec_deg=dec_deg,
+            diameter_arcmin=diameter_arcmin,
+            width=600,
+            height=600,
+        )
+
+        if result:
+            image_bytes, source_label = result
+            img = Image.open(BytesIO(image_bytes))
+            img.thumbnail((300, 250), Image.Resampling.LANCZOS)
+            photo = ImageTk.PhotoImage(img)
+            self.image_cache[cache_key] = (photo, source_label)
+
+            image_label = tk.Label(parent_frame, image=photo, bg='black')
+            image_label.pack(pady=(0, 5))
+            tk.Label(parent_frame, text=f"Source: {source_label}", font=("Arial", 7), bg="black", fg="#888888").pack(anchor='w')
+            return True
+
+        self.image_cache[cache_key] = None
+        return False
+
     def _show_object_info(self, parent_frame, object_data, object_name):
         """Show object information when no image is available."""
         # Create info frame with different background
