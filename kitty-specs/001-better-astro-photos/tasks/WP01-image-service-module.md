@@ -20,8 +20,8 @@ subtasks:
 - 'T005: Implement image validation'
 phase: Phase 1 - Core Service
 assignee: ''
-agent: ''
-shell_pid: '8956'
+agent: "copilot"
+shell_pid: "8956"
 history:
 - timestamp: '2026-04-13T18:00:00Z'
   agent: system
@@ -170,3 +170,7 @@ if avg_brightness < 10:
 ## Dependencies
 
 None — this is the foundational WP.
+
+## Activity Log
+
+- 2026-04-13T18:11:27Z – copilot – shell_pid=8956 – Assigned agent via action command
