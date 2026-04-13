@@ -23,6 +23,7 @@ import os
 
 from src.database.database_manager import DatabaseManager
 from src.utils.astronomical_calculations import AstronomicalCalculator
+from src.utils.image_service import ImageService
 
 
 class PySide6TargetSelectionGUI(QWidget):
@@ -46,6 +47,7 @@ class PySide6TargetSelectionGUI(QWidget):
         
         # Image cache for tooltips
         self.image_cache = {}
+        self._image_service = ImageService()
         
         # Tooltip state (disabled for performance - images load on double-click only)
         # self.tooltip_timer = QTimer()
@@ -772,215 +774,41 @@ class PySide6TargetSelectionGUI(QWidget):
             self.logger.debug(f"Error checking transit time for object: {e}")
             return False
             
-    def load_dss_image(self, ra_deg: float, dec_deg: float, object_name: str) -> tuple:
-        """Load astronomical image from best available source (SDSS, then DSS fallback).
-        Returns: (QPixmap, source_name) where source_name is 'SDSS', 'DSS', or None
+    def load_dss_image(self, ra_deg: float, dec_deg: float, object_name: str, diameter_arcmin=None) -> tuple:
+        """Load astronomical image via ImageService (hips2fits with fallback chain).
+        Returns: (QPixmap, source_name) or (None, None)
         """
         cache_key = f"sky_{ra_deg:.3f}_{dec_deg:.3f}"
         
-        # Check cache (stores tuple of (pixmap, source))
+        # Check in-memory cache
         if cache_key in self.image_cache:
             cached = self.image_cache[cache_key]
             if cached is None:
                 return None, None
             return cached
         
-        # Try SDSS first (better quality, color images)
-        pixmap = self._try_load_sdss(ra_deg, dec_deg, object_name)
-        if pixmap and not pixmap.isNull():
-            result = (pixmap, 'SDSS')
-            self.image_cache[cache_key] = result
-            return result
+        result = self._image_service.fetch_object_image(
+            ra_deg=ra_deg,
+            dec_deg=dec_deg,
+            diameter_arcmin=diameter_arcmin,
+            width=600,
+            height=600,
+        )
         
-        # Fallback to DSS if SDSS fails
-        pixmap = self._try_load_dss(ra_deg, dec_deg, object_name)
-        if pixmap and not pixmap.isNull():
-            result = (pixmap, 'DSS')
-            self.image_cache[cache_key] = result
-            return result
+        if result:
+            image_bytes, source_label = result
+            pixmap = QPixmap()
+            pixmap.loadFromData(image_bytes)
+            if not pixmap.isNull():
+                entry = (pixmap, source_label)
+                self.image_cache[cache_key] = entry
+                return entry
         
-        # Cache failure to avoid repeated attempts
         self.image_cache[cache_key] = None
         return None, None
     
-    def _try_load_sdss(self, ra_deg: float, dec_deg: float, object_name: str) -> QPixmap:
-        """Try to load image from Sloan Digital Sky Survey."""
-        try:
-            # SDSS SkyServer cutout service - provides color composite images
-            # Scale: 0.396 arcsec/pixel, width/height in pixels
-            # Using 512x512 pixels = ~3.4 arcmin field of view
-            width = 512
-            height = 512
-            scale = 0.4  # arcsec/pixel
-            
-            sdss_url = (
-                f"http://skyserver.sdss.org/dr17/SkyServerWS/ImgCutout/getjpeg"
-                f"?ra={ra_deg:.6f}&dec={dec_deg:.6f}"
-                f"&width={width}&height={height}&scale={scale}"
-            )
-            
-            self.logger.info(f"Fetching SDSS image for {object_name}")
-            
-            headers = {
-                'User-Agent': 'NextAstroTarget/2.0.0 (Astronomy Application; PySide6)',
-                'Accept': 'image/jpeg,image/*,*/*'
-            }
-            
-            response = requests.get(sdss_url, headers=headers, timeout=8)
-            
-            if response.status_code == 200 and len(response.content) > 5000:
-                # Load image
-                img = Image.open(BytesIO(response.content))
-                
-                # Check if image is not just blank/black (SDSS returns black for no data)
-                # Convert to grayscale and check average brightness
-                img_gray = img.convert('L')
-                img_array = np.array(img_gray)
-                avg_brightness = np.mean(img_array)
-                
-                # If image is mostly black (avg < 10), SDSS has no data for this region
-                if avg_brightness < 10:
-                    self.logger.info(f"SDSS image too dark for {object_name}, likely no coverage")
-                    return None
-                
-                # Resize if needed
-                if img.size[0] > 400 or img.size[1] > 400:
-                    img.thumbnail((400, 400), Image.Resampling.LANCZOS)
-                
-                # Convert to QPixmap
-                img_bytes = BytesIO()
-                img.save(img_bytes, format='PNG')
-                img_bytes.seek(0)
-                
-                pixmap = QPixmap()
-                pixmap.loadFromData(img_bytes.read())
-                
-                self.logger.info(f"Successfully loaded SDSS color image for {object_name}")
-                return pixmap
-                
-        except Exception as e:
-            self.logger.debug(f"Failed to load SDSS image: {e}")
-            
-        return None
-    
-    def _try_load_dss(self, ra_deg: float, dec_deg: float, object_name: str) -> QPixmap:
-        """Fallback: Load color composite image from Digitized Sky Survey.
-        Combines Red, Blue, and IR filters to create an RGB color image.
-        """
-        try:
-            # DSS2 has multiple surveys we can combine for color
-            # R: poss2ukstu_red (Red filter)
-            # G: poss2ukstu_blue (Blue filter) 
-            # B: poss2ukstu_ir (Infrared, used as blue channel for deeper sky)
-            
-            # Try to fetch and combine multiple filters for color
-            size = 15.0  # 15 arcmin field of view
-            
-            self.logger.info(f"Fetching DSS color composite for {object_name}")
-            
-            headers = {
-                'User-Agent': 'NextAstroTarget/2.0.0 (Astronomy Application; PySide6)',
-                'Accept': 'image/gif,image/*,*/*;q=0.8'
-            }
-            
-            # Fetch Red channel (brightest, use for luminance)
-            red_url = (
-                f"https://archive.stsci.edu/cgi-bin/dss_search"
-                f"?v=poss2ukstu_red&r={ra_deg:.6f}&d={dec_deg:.6f}"
-                f"&e=J2000&h={size}&w={size}&f=gif&c=none&fov=NONE&v3="
-            )
-            
-            red_response = requests.get(red_url, headers=headers, timeout=8)
-            
-            if red_response.status_code == 200 and len(red_response.content) > 10000:
-                red_img = Image.open(BytesIO(red_response.content)).convert('L')
-                
-                # Try to fetch Blue channel for color
-                blue_url = (
-                    f"https://archive.stsci.edu/cgi-bin/dss_search"
-                    f"?v=poss2ukstu_blue&r={ra_deg:.6f}&d={dec_deg:.6f}"
-                    f"&e=J2000&h={size}&w={size}&f=gif&c=none&fov=NONE&v3="
-                )
-                
-                try:
-                    blue_response = requests.get(blue_url, headers=headers, timeout=8)
-                    if blue_response.status_code == 200 and len(blue_response.content) > 10000:
-                        blue_img = Image.open(BytesIO(blue_response.content)).convert('L')
-                        
-                        # Create RGB composite
-                        # Resize to same dimensions if needed
-                        if red_img.size != blue_img.size:
-                            blue_img = blue_img.resize(red_img.size, Image.Resampling.LANCZOS)
-                        
-                        # Create color image: R=red, G=(red+blue)/2, B=blue
-                        # This creates a natural-looking color image
-                        red_array = np.array(red_img)
-                        blue_array = np.array(blue_img)
-                        green_array = ((red_array.astype(np.float32) + blue_array.astype(np.float32)) / 2).astype(np.uint8)
-                        
-                        # Stack into RGB
-                        rgb_array = np.stack([red_array, green_array, blue_array], axis=2)
-                        color_img = Image.fromarray(rgb_array, mode='RGB')
-                        
-                        self.logger.info(f"Created DSS RGB composite for {object_name}")
-                    else:
-                        # Blue channel failed, create pseudo-color from red
-                        color_img = self._create_pseudocolor(red_img)
-                        self.logger.info(f"Created DSS pseudo-color image for {object_name}")
-                        
-                except Exception as e:
-                    # Fallback to pseudo-color if blue channel fails
-                    self.logger.debug(f"Blue channel failed, using pseudo-color: {e}")
-                    color_img = self._create_pseudocolor(red_img)
-                
-                # Resize if needed
-                if color_img.size[0] > 400 or color_img.size[1] > 400:
-                    color_img.thumbnail((400, 400), Image.Resampling.LANCZOS)
-                
-                # Convert to QPixmap
-                img_bytes = BytesIO()
-                color_img.save(img_bytes, format='PNG')
-                img_bytes.seek(0)
-                
-                pixmap = QPixmap()
-                pixmap.loadFromData(img_bytes.read())
-                
-                self.logger.info(f"Successfully loaded DSS color image for {object_name}")
-                return pixmap
-                
-        except Exception as e:
-            self.logger.debug(f"Failed to load DSS image: {e}")
-            
-        return None
-    
-    def _create_pseudocolor(self, grayscale_img: Image.Image) -> Image.Image:
-        """Create a pseudo-color image from grayscale using color mapping.
-        Maps grayscale to a blue-white-red color scheme typical of astronomy images.
-        """
-        # Convert to numpy array
-        gray_array = np.array(grayscale_img)
-        
-        # Normalize to 0-1
-        gray_norm = gray_array.astype(np.float32) / 255.0
-        
-        # Create color mapping (blue for dark, white for bright, slight red for very bright)
-        # R channel: gradual increase from 0 to 1
-        r = np.clip(gray_norm * 1.2, 0, 1)
-        
-        # G channel: peaks at mid-tones
-        g = np.clip(gray_norm * 1.1, 0, 1)
-        
-        # B channel: strong in dark areas, decreases with brightness
-        b = np.clip(0.3 + gray_norm * 0.9, 0, 1)
-        
-        # Stack and convert back to uint8
-        rgb_array = np.stack([
-            (r * 255).astype(np.uint8),
-            (g * 255).astype(np.uint8),
-            (b * 255).astype(np.uint8)
-        ], axis=2)
-        
-        return Image.fromarray(rgb_array, mode='RGB')
+    # Legacy image methods (_try_load_sdss, _try_load_dss, _create_pseudocolor)
+    # removed — all image fetching now goes through ImageService.
         
     def pixmap_to_base64(self, pixmap: QPixmap) -> str:
         """Convert QPixmap to base64 string."""
@@ -1119,29 +947,29 @@ class PySide6TargetSelectionGUI(QWidget):
                     
                     self.logger.info(f"Loading sky survey image for coordinates: RA={ra_float}, Dec={dec_float}")
                     
-                    # Load sky survey image (SDSS or DSS)
-                    pixmap, source = self.load_dss_image(ra_float, dec_float, obj_data.get('object_name', ''))
+                    # Load sky survey image via ImageService
+                    diam = obj_data.get('size_arcmin')
+                    try:
+                        diam = float(diam) if diam is not None else None
+                    except (ValueError, TypeError):
+                        diam = None
+                    pixmap, source = self.load_dss_image(ra_float, dec_float, obj_data.get('object_name', ''), diameter_arcmin=diam)
                     
                     if pixmap and not pixmap.isNull():
                         self.logger.info(f"Sky survey image loaded successfully from {source}, size: {pixmap.width()}x{pixmap.height()}")
                         
                         image_label = QLabel()
                         # Scale image to fit dialog while maintaining aspect ratio
-                        scaled_pixmap = pixmap.scaled(450, 450, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                        scaled_pixmap = pixmap.scaled(600, 600, Qt.KeepAspectRatio, Qt.SmoothTransformation)
                         image_label.setPixmap(scaled_pixmap)
                         image_label.setAlignment(Qt.AlignCenter)
                         image_label.setStyleSheet("border: 2px solid #4A9EFF; background-color: #000; padding: 5px;")
                         layout.addWidget(image_label)
                         
                         # Show source attribution
-                        if source == 'SDSS':
-                            caption_text = "🔭 Sloan Digital Sky Survey (SDSS) - Color Composite"
-                        else:
-                            caption_text = "🔭 Digitized Sky Survey (DSS) - Red Filter"
-                        
-                        caption = QLabel(caption_text)
+                        caption = QLabel(f"Image: {source}")
                         caption.setAlignment(Qt.AlignCenter)
-                        caption.setStyleSheet("color: #808080; font-size: 9pt;")
+                        caption.setStyleSheet("color: #888; font-size: 10px;")
                         layout.addWidget(caption)
                     else:
                         self.logger.warning(f"Sky survey image not available for {obj_data.get('object_name')}")
