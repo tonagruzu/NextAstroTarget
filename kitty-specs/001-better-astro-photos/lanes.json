@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "mission_slug": "001-better-astro-photos",
+  "mission_id": "01KP3ZHQJ65GTHSMJS7NHHDCD7",
+  "mission_branch": "001-better-astro-photos",
+  "target_branch": "main",
+  "computed_at": "2026-04-13T18:10:00Z",
+  "computed_from": "manual",
+  "planning_artifact_wps": [],
+  "lanes": [
+    {
+      "lane_id": "lane-a",
+      "wp_ids": ["WP01", "WP02", "WP03", "WP04", "WP05"],
+      "write_scope": ["src/utils/", "src/gui/", "data/image_cache/", "test_image_service.py"],
+      "predicted_surfaces": ["src/utils/image_service.py", "src/gui/pyside6_target_selection.py", "src/gui/enhanced_target_selection_gui.py", "data/image_cache/.gitkeep", "test_image_service.py"],
+      "depends_on_lanes": [],
+      "parallel_group": 0
+    }
+  ]
+}
