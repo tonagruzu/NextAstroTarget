@@ -132,3 +132,7 @@ The hover tooltip should also benefit from the new image service:
 
 - **WP01** — ImageService module
 - **WP02** — DiskImageCache for persistent caching
+
+## Activity Log
+
+- 2026-04-13T18:16:23Z – unknown – Moved to in_progress
