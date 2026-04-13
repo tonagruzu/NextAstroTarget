@@ -120,3 +120,7 @@ If the Tkinter version has a "View Details" right-click option (~line 1381), upd
 
 - **WP01** — ImageService module
 - **WP02** — DiskImageCache for persistent caching
+
+## Activity Log
+
+- 2026-04-13T18:20:10Z – unknown – Moved to in_progress
