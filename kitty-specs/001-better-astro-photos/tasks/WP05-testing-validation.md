@@ -121,3 +121,4 @@ Objects to test:
 
 - 2026-04-13T18:23:03Z – unknown – Moved to in_progress
 - 2026-04-13T18:25:40Z – unknown – Moved to for_review
+- 2026-04-13T18:25:42Z – unknown – Moved to approved
