@@ -174,3 +174,4 @@ None — this is the foundational WP.
 ## Activity Log
 
 - 2026-04-13T18:11:27Z – copilot – shell_pid=8956 – Assigned agent via action command
+- 2026-04-13T18:12:23Z – copilot – shell_pid=8956 – Image service module with hips2fits integration, survey fallback chain, adaptive FOV, and brightness validation
