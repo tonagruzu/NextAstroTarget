@@ -116,3 +116,7 @@ Objects to test:
 ## Dependencies
 
 - **WP01** through **WP04** — all implementation must be complete.
+
+## Activity Log
+
+- 2026-04-13T18:23:03Z – unknown – Moved to in_progress
