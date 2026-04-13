@@ -10,6 +10,7 @@ import io
 import json
 import logging
 import os
+import ssl
 import threading
 import time
 import urllib.error
@@ -19,9 +20,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
+import certifi
 from PIL import Image
 
 logger = logging.getLogger(__name__)
+
+_SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
 
 HIPS2FITS_ENDPOINT = "https://alasky.cds.unistra.fr/hips-image-services/hips2fits"
 LEGACY_DSS_ENDPOINT = "https://archive.stsci.edu/cgi-bin/dss_search"
@@ -42,11 +46,12 @@ class Survey:
     hips_id: str
 
 
-# Ordered by preference: best quality first, broadest coverage last
+# Ordered by preference: DSS2 color first (artifact-free on bright objects),
+# then PanSTARRS/SDSS as fallbacks for regions DSS2 may lack.
 SURVEYS = [
+    Survey("DSS2 color", "CDS/P/DSS2/color"),
     Survey("PanSTARRS DR1", "CDS/P/PanSTARRS/DR1/color-z-zg-g"),
     Survey("SDSS9", "CDS/P/SDSS9/color"),
-    Survey("DSS2", "CDS/P/DSS2/color"),
 ]
 
 
@@ -278,7 +283,7 @@ class ImageService:
             },
         )
 
-        response = urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT)
+        response = urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT, context=_SSL_CONTEXT)
         if response.status != 200:
             return None
 
@@ -331,7 +336,7 @@ class ImageService:
             },
         )
 
-        response = urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT)
+        response = urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT, context=_SSL_CONTEXT)
         if response.status != 200:
             return None
 

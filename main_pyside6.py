@@ -62,7 +62,8 @@ class NextAstroTargetApp:
             self.app = QApplication(sys.argv)
             self.app.setApplicationName("NextAstroTarget")
             self.app.setOrganizationName("AstroTarget")
-            self.app.setApplicationDisplayName("NextAstroTarget - Enhanced Astrophotography Target Selector")
+            from src import __version__
+            self.app.setApplicationDisplayName(f"NextAstroTarget v{__version__}")
             
             # Set application style
             self.app.setStyle("Fusion")  # Modern cross-platform style
@@ -88,7 +89,7 @@ class NextAstroTargetApp:
             self.main_window = ModernMainWindow(self.db_manager)
             
             # Configure window
-            self.main_window.setWindowTitle("NextAstroTarget - Enhanced Astrophotography Target Selector")
+            self.main_window.setWindowTitle(f"NextAstroTarget v{__version__} - Astronomy Target Planning")
             
             # Set initial size and center
             self._setup_window_geometry()
