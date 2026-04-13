@@ -79,6 +79,11 @@ data/*.db
 data/*.sqlite
 data/*.sqlite3
 
+# Image cache (generated at runtime)
+data/image_cache/*.jpg
+data/image_cache/.cache_index.json
+data/image_cache/.cache_index.tmp
+
 # Log files (generated at runtime)
 logs/*.log
 logs/*.log.*

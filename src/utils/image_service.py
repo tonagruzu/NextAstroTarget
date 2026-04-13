@@ -7,14 +7,17 @@ automatic fallback and adaptive field-of-view calculation.
 from __future__ import annotations
 
 import io
+import json
 import logging
+import os
 import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from PIL import Image
 
@@ -27,6 +30,9 @@ REQUEST_TIMEOUT = 10  # seconds
 MIN_IMAGE_SIZE = 5 * 1024  # 5 KB minimum for valid image
 MIN_BRIGHTNESS = 10  # minimum average pixel brightness
 USER_AGENT = "NextAstroTarget/2.0.0 (Astronomy Application)"
+DEFAULT_CACHE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "image_cache")
+MAX_CACHE_SIZE_MB = 500
+EVICTION_TARGET_RATIO = 0.8  # evict down to 80% of max
 
 
 @dataclass(frozen=True)
@@ -53,12 +59,113 @@ class ImageResult:
     height: int
 
 
+class DiskImageCache:
+    """Persistent disk cache for astronomical images with LRU eviction."""
+
+    def __init__(self, cache_dir: str, max_size_mb: int = MAX_CACHE_SIZE_MB):
+        self.cache_dir = Path(cache_dir)
+        self.max_size_bytes = max_size_mb * 1024 * 1024
+        self.eviction_target = int(self.max_size_bytes * EVICTION_TARGET_RATIO)
+        self.index_file = self.cache_dir / ".cache_index.json"
+        self._lock = threading.Lock()
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self._index: Dict[str, Dict[str, Any]] = self._load_index()
+
+    def _load_index(self) -> Dict[str, Dict[str, Any]]:
+        """Load cache index from disk."""
+        if self.index_file.exists():
+            try:
+                return json.loads(self.index_file.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                logger.warning("Corrupt cache index, starting fresh")
+        return {}
+
+    def _save_index(self) -> None:
+        """Save cache index to disk atomically."""
+        content = json.dumps(self._index, indent=2)
+        tmp_path = self.index_file.with_suffix(".tmp")
+        tmp_path.write_text(content, encoding="utf-8")
+        tmp_path.replace(self.index_file)
+
+    def get(self, key: str) -> Optional[Tuple[bytes, str]]:
+        """Return cached image bytes and source label, or None."""
+        with self._lock:
+            entry = self._index.get(key)
+            if entry is None:
+                return None
+
+            file_path = self.cache_dir / entry["file"]
+            if not file_path.exists():
+                del self._index[key]
+                self._save_index()
+                return None
+
+            # Update last access time
+            entry["last_access"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            self._save_index()
+
+            image_bytes = file_path.read_bytes()
+            return (image_bytes, entry["source"])
+
+    def put(self, key: str, data: bytes, source: str) -> None:
+        """Store image bytes in the cache."""
+        with self._lock:
+            filename = f"{key}.jpg"
+            file_path = self.cache_dir / filename
+
+            file_path.write_bytes(data)
+
+            now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            self._index[key] = {
+                "file": filename,
+                "size": len(data),
+                "source": source,
+                "last_access": now,
+                "created": now,
+            }
+            self._save_index()
+            self._maybe_evict()
+
+    def _maybe_evict(self) -> None:
+        """Evict least-recently-accessed entries if over size limit."""
+        total_size = sum(e["size"] for e in self._index.values())
+        if total_size <= self.max_size_bytes:
+            return
+
+        # Sort by last_access ascending (oldest first)
+        sorted_keys = sorted(
+            self._index.keys(),
+            key=lambda k: self._index[k].get("last_access", ""),
+        )
+
+        for key in sorted_keys:
+            if total_size <= self.eviction_target:
+                break
+            entry = self._index[key]
+            file_path = self.cache_dir / entry["file"]
+            total_size -= entry["size"]
+            try:
+                file_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+            del self._index[key]
+
+        self._save_index()
+        logger.info("Cache eviction complete, new size: %.1f MB", total_size / (1024 * 1024))
+
+
 class ImageService:
     """Fetches astronomical object images from sky survey services."""
 
     def __init__(self, cache_dir: Optional[str] = None):
         self._lock = threading.Lock()
-        self._cache_dir = Path(cache_dir) if cache_dir else None
+        cache_path = cache_dir or DEFAULT_CACHE_DIR
+        self._cache = DiskImageCache(cache_path)
+
+    @staticmethod
+    def _make_cache_key(ra_deg: float, dec_deg: float) -> str:
+        """Create a cache key from coordinates."""
+        return f"{ra_deg:.4f}_{dec_deg:.4f}"
 
     def fetch_object_image(
         self,
@@ -82,6 +189,13 @@ class ImageService:
         Returns:
             Tuple of (image_bytes, source_label) or None if all sources fail.
         """
+        cache_key = self._make_cache_key(ra_deg, dec_deg)
+
+        # Check disk cache first
+        cached = self._cache.get(cache_key)
+        if cached is not None:
+            return cached
+
         fov_deg = self._calculate_fov(diameter_arcmin)
 
         # Try hips2fits surveys in order
@@ -91,6 +205,7 @@ class ImageService:
                     survey, ra_deg, dec_deg, fov_deg, width, height
                 )
                 if result is not None:
+                    self._cache.put(cache_key, result[0], result[1])
                     return result
             except Exception:
                 logger.debug(
@@ -104,6 +219,7 @@ class ImageService:
         try:
             result = self._fetch_legacy_dss(ra_deg, dec_deg)
             if result is not None:
+                self._cache.put(cache_key, result[0], result[1])
                 return result
         except Exception:
             logger.debug(
