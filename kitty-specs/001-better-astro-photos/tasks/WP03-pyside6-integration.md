@@ -137,3 +137,4 @@ The hover tooltip should also benefit from the new image service:
 
 - 2026-04-13T18:16:23Z – unknown – Moved to in_progress
 - 2026-04-13T18:19:58Z – unknown – Moved to for_review
+- 2026-04-13T18:19:59Z – unknown – Moved to approved
