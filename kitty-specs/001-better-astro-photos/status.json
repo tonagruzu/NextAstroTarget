@@ -1,7 +1,7 @@
 {
-  "event_count": 17,
-  "last_event_id": "01KP40Y57YM3YTG5GSGD0GC255",
-  "materialized_at": "2026-04-13T18:16:23.038701+00:00",
+  "event_count": 18,
+  "last_event_id": "01KP414Q591DCWBM8PMSDB1YKR",
+  "materialized_at": "2026-04-13T18:19:57.993730+00:00",
   "mission_number": "001",
   "mission_slug": "001-better-astro-photos",
   "mission_type": "software-dev",
@@ -11,8 +11,8 @@
     "canceled": 0,
     "claimed": 0,
     "done": 0,
-    "for_review": 0,
-    "in_progress": 1,
+    "for_review": 1,
+    "in_progress": 0,
     "in_review": 0,
     "planned": 2
   },
@@ -34,9 +34,9 @@
     "WP03": {
       "actor": "user",
       "force_count": 1,
-      "lane": "in_progress",
-      "last_event_id": "01KP40Y57YM3YTG5GSGD0GC255",
-      "last_transition_at": "2026-04-13T18:16:23.038701+00:00"
+      "lane": "for_review",
+      "last_event_id": "01KP414Q591DCWBM8PMSDB1YKR",
+      "last_transition_at": "2026-04-13T18:19:57.993730+00:00"
     },
     "WP04": {
       "actor": "finalize-tasks",
