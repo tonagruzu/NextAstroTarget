@@ -226,6 +226,55 @@ więcej niż darmowy model. **Dla tego projektu wygrywa DeepSeek V4 — bo ma 1M
 Wszystkie trzy na **fp8**. Do wyboru w `/models`, a `pro-hard` jest też podpięty pod agenta
 `hard` (`shift+tab`) i komendę `/hard <zadanie>` (subagent w tle, nie brudzi głównego kontekstu).
 
+### Przełączanie modelu — i pułapka nazw
+
+W `/models` wyświetla się pole **`name`**, a nie alias z klucza ani `modelID`. Jeśli w configu
+napiszesz `"name": "V4.1 Flash · coreweave (fast)"`, to na liście **nie zobaczysz słowa
+`flash-balanced`** — mimo że model jest aktywny i da się go wybrać. Dlatego nazwy w tym projekcie
+zaczynają się od aliasu:
+
+```jsonc
+"flash-balanced": {
+  "name": "flash-balanced · V4.1 Flash coreweave (fast)",  // to widać w /models
+  "modelID": "deepseek-ai/DeepSeek-V4.1-Flash-1017:coreweave"  // to leci do routera
+}
+```
+
+Reguła: **pierwszy człon `name` = alias**, żeby dało się filtrować po nazwie, której się szuka.
+
+Sposoby przełączenia:
+
+| Sposób | Jak |
+| --- | --- |
+| `/models` lub `ctrl+x` → `m` | wpisz `flash` — lista zawęzi się do trzech profili |
+| `f2` | cykl po ostatnio używanych (cheap ↔ balanced to jedno naciśnięcie) |
+| `shift+tab` | agent `hard`, ma `pro-hard` na stałe |
+| `/hard <zadanie>` | jednorazowo Pro w subagencie |
+
+`/models` **nie przyjmuje argumentu** — `/models flash-balanced` nic nie zrobi.
+
+Przełączenie modelu bieżącej sesji z poziomu agenta oraz weryfikacja:
+
+```powershell
+opencode api post "/api/session/$env:OPENCODE_SESSION_ID/model" `
+  --data '{"model":{"providerID":"huggingface","id":"flash-balanced"}}'
+
+opencode api get "/api/session/$env:OPENCODE_SESSION_ID"   # pole model
+```
+
+**Jeśli w `/models` nie ma żadnego z trzech profili**, to prawie zawsze zły katalog sesji.
+OpenCode czyta `opencode.jsonc` z projektu, w którym sesja działa; sesja otwarta w katalogu
+domowym nie zobaczy konfiguracji z repo. Sprawdź:
+
+```powershell
+opencode api get "/api/session/$env:OPENCODE_SESSION_ID"   # pole location.directory
+```
+
+Musi wskazywać na repo. Uwaga: `opencode api get /api/model` bez parametru `location` również
+rozwiązuje się do katalogu domowego, więc jego wynik bywa mylący — nie używać go do diagnozy
+„czy model jest w projekcie".
+
+
 ### Ile to realnie kosztuje
 
 Zmierzone na tej sesji: 319K input, 19,6K output, **4,79M odczytów cache**, koszt **$0,032**.
