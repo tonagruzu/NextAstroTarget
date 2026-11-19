@@ -12,6 +12,8 @@ import logging
 from typing import Optional, Tuple
 import webbrowser
 
+from src import __version__
+
 
 class WeatherForecastWidget:
     """Widget for displaying astronomical weather forecast from ClearOutside."""
@@ -123,7 +125,7 @@ class WeatherForecastWidget:
             
             # Download forecast image
             headers = {
-                'User-Agent': 'NextAstroTarget/1.1.0 (Astronomy Application)'
+                'User-Agent': f'NextAstroTarget/{__version__} (Astronomy Application)'
             }
             
             response = requests.get(image_url, headers=headers, timeout=15)

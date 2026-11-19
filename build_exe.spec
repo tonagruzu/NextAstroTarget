@@ -15,9 +15,9 @@ project_root = Path('.').absolute()
 # Build list of data files, checking if they exist
 datas = []
 
-# Add database if it exists
-if Path('targets.db').exists():
-    datas.append(('targets.db', '.'))
+# Add database if it exists (real location per config/config.ini: data_dir=data)
+if Path('data/astro_targets.db').exists():
+    datas.append(('data/astro_targets.db', 'data'))
     
 # Add config directory if it exists
 if Path('config').exists():
@@ -27,6 +27,10 @@ if Path('config').exists():
 if Path('icons').exists():
     datas.append(('icons', 'icons'))
     
+# Add assets directory if it exists
+if Path('assets').exists():
+    datas.append(('assets', 'assets'))
+
 # Add src package (required)
 datas.append(('src', 'src'))
 
@@ -54,8 +58,6 @@ a = Analysis(
     excludes=[
         'tkinter',  # Exclude old Tkinter version
         'matplotlib',
-        'numpy',
-        'pandas',
         'scipy',
     ],
     win_no_prefer_redirects=False,

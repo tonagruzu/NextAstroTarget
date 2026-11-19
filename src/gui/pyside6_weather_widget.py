@@ -13,6 +13,8 @@ from io import BytesIO
 from PIL import Image
 import webbrowser
 
+from src import __version__
+
 
 class PySide6WeatherWidget(QWidget):
     """Modern weather forecast display widget with ClearOutside integration."""
@@ -142,7 +144,7 @@ class PySide6WeatherWidget(QWidget):
             
             # Download forecast image
             headers = {
-                'User-Agent': 'NextAstroTarget/2.0.0 (Astronomy Application; PySide6)'
+                'User-Agent': f'NextAstroTarget/{__version__} (Astronomy Application; PySide6)'
             }
             
             response = requests.get(image_url, headers=headers, timeout=15)

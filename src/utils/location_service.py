@@ -10,6 +10,8 @@ import logging
 from datetime import datetime
 import math
 
+from src import __version__
+
 
 class LocationService:
     """Service for geocoding addresses and determining timezone information."""
@@ -42,7 +44,7 @@ class LocationService:
             }
             
             headers = {
-                'User-Agent': 'NextAstroTarget/1.1.0 (Astronomy Application)'
+                'User-Agent': f'NextAstroTarget/{__version__} (Astronomy Application)'
             }
             
             response = requests.get(nominatim_url, params=params, headers=headers, timeout=10)

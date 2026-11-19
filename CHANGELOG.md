@@ -14,6 +14,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Equipment compatibility checking
 - Web-based interface
 
+## [2.0.1] - 2026-11-19
+
+### Fixed
+- Packaged executable crashed on startup, before logging initialised. `build_exe.spec`
+  excluded `pandas` and `numpy`, but `main_pyside6.py` → `DatabaseManager` imports `pandas`.
+  Both are no longer excluded.
+- Packaged executable started with an empty catalogue: the spec bundled a non-existent
+  `targets.db` instead of the real `data/astro_targets.db`. It now bundles the correct
+  database (3143 rows in `Main`).
+- Application icon was missing at runtime because `assets/` was not bundled. Added.
+
+### Changed
+- Version is now read from a single place. The `User-Agent` strings in `image_service`,
+  `weather_service`, `location_service` and `pyside6_weather_widget` previously hard-coded
+  `1.1.0` or `2.0.0`; they now derive from `src.__version__`.
+
+### Known issues
+- The packaged app resolves `data/` and `logs/` inside the PyInstaller temporary
+  directory, so anything written at runtime (observatory config, persistent settings,
+  logs) is lost when the executable exits. The catalogue is re-extracted from the bundle
+  on every launch. This needs a persistent per-user data directory.
+
 ## [1.1.0] - 2025-11-01
 
 ### Added - Enhanced User Interface Implementation

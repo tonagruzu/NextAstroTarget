@@ -23,6 +23,8 @@ from typing import Any, Dict, Optional, Tuple
 import certifi
 from PIL import Image
 
+from src import __version__
+
 logger = logging.getLogger(__name__)
 
 _SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
@@ -33,7 +35,7 @@ LEGACY_DSS_ENDPOINT = "https://archive.stsci.edu/cgi-bin/dss_search"
 REQUEST_TIMEOUT = 10  # seconds
 MIN_IMAGE_SIZE = 5 * 1024  # 5 KB minimum for valid image
 MIN_BRIGHTNESS = 10  # minimum average pixel brightness
-USER_AGENT = "NextAstroTarget/2.0.0 (Astronomy Application)"
+USER_AGENT = f"NextAstroTarget/{__version__} (Astronomy Application)"
 DEFAULT_CACHE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "image_cache")
 MAX_CACHE_SIZE_MB = 500
 EVICTION_TARGET_RATIO = 0.8  # evict down to 80% of max
