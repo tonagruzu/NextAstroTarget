@@ -50,5 +50,6 @@ spreadsheet from inside the application; the import rebuilds the catalogue table
 ## If the desktop shortcut stops working
 
 The shortcut stores an absolute path. If the folder moved or the drive letter changed, run
-`NextAstroTarget.exe` directly from its folder; the application will repair the shortcut per
-the desktop-shortcut change.
+`NextAstroTarget.exe` directly from its folder once; on startup the application re-points the
+shortcut at the current location. This applies only when the shortcut was previously created
+through the application's first-run prompt.

@@ -20,7 +20,11 @@ python main_pyside6.py
 
 ## Creating/Recreating Desktop Shortcut
 
-If you need to create or recreate the desktop shortcut:
+For the packaged build (`dist/NextAstroTarget.exe`), the application asks on its first run
+whether to create a desktop shortcut, and keeps it pointing at the current location on later
+starts.
+
+If you need to create or recreate the shortcut while running from source:
 
 ```powershell
 python create_desktop_shortcut.py
@@ -135,6 +139,10 @@ timezone = CET
 ## Troubleshooting
 
 ### Desktop shortcut not working?
+If the shortcut was created by the packaged build, run `NextAstroTarget.exe` directly from its
+folder once — the application repairs the shortcut on the next startup.
+
+To create or recreate it manually while running from source:
 ```powershell
 python create_desktop_shortcut.py
 ```
@@ -173,5 +181,5 @@ For issues or questions:
 
 ---
 
-**Version**: 2.0.1 (PySide6)  
+**Version**: 2.0.2 (PySide6)  
 **Last Updated**: November 2026

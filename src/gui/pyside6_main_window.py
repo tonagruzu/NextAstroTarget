@@ -251,6 +251,9 @@ class ModernMainWindow(QMainWindow):
         
         # Check database and navigate
         self.check_database_and_navigate()
+
+        # Offer to create, or keep current, the desktop shortcut (packaged builds)
+        self.manage_desktop_shortcut()
     
     def setup_modern_ui(self):
         """Set up modern PySide6 interface."""
@@ -1009,6 +1012,46 @@ class ModernMainWindow(QMainWindow):
                 "Database Setup Required",
                 "Please import the Excel database file first."
             )
+
+    def manage_desktop_shortcut(self):
+        """Offer to create, and later keep current, the desktop shortcut.
+
+        Runs only in a packaged build. The choice is remembered so the question
+        is asked at most once, and an existing shortcut is repaired in place when
+        the application has moved.
+        """
+        try:
+            from src.utils import desktop_shortcut
+
+            if not desktop_shortcut.is_windows() or not desktop_shortcut.is_frozen():
+                return
+
+            setting = self.db_manager.get_setting("shortcut_enabled")
+            action = desktop_shortcut.decide(setting, desktop_shortcut.is_stale())
+
+            if action == "offer":
+                reply = QMessageBox.question(
+                    self,
+                    "Desktop Shortcut",
+                    "Create a desktop shortcut to launch NextAstroTarget?",
+                    QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.Yes,
+                )
+                if reply == QMessageBox.Yes:
+                    if desktop_shortcut.create():
+                        self.db_manager.save_setting("shortcut_enabled", "yes")
+                        self.logger.info("Desktop shortcut created")
+                    else:
+                        self.logger.warning("Failed to create desktop shortcut")
+                else:
+                    self.db_manager.save_setting("shortcut_enabled", "no")
+            elif action == "repair":
+                if desktop_shortcut.repair():
+                    self.logger.info("Desktop shortcut repaired to current location")
+                else:
+                    self.logger.warning("Failed to repair desktop shortcut")
+        except Exception as e:
+            self.logger.warning("Desktop shortcut management failed: %s", e)
             
     def show_target_selection_screen(self):
         """Show modern target selection screen."""

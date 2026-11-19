@@ -14,6 +14,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Equipment compatibility checking
 - Web-based interface
 
+## [2.0.2] - 2026-11-19
+
+### Added
+- Desktop shortcut management: on first run the packaged application offers to create a desktop
+  shortcut to itself, remembers the answer, and re-points an existing shortcut when the executable
+  has moved. The shortcut uses the executable's embedded icon and its own folder as working
+  directory.
+
+### Changed
+- Version bumped to 2.0.2.
+
 ## [2.0.1] - 2026-11-19
 
 ### Fixed
