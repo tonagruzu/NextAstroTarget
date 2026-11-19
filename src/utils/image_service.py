@@ -24,6 +24,7 @@ import certifi
 from PIL import Image
 
 from src import __version__
+from src.paths import data_dir
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +37,7 @@ REQUEST_TIMEOUT = 10  # seconds
 MIN_IMAGE_SIZE = 5 * 1024  # 5 KB minimum for valid image
 MIN_BRIGHTNESS = 10  # minimum average pixel brightness
 USER_AGENT = f"NextAstroTarget/{__version__} (Astronomy Application)"
-DEFAULT_CACHE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "image_cache")
+DEFAULT_CACHE_DIR = str(data_dir() / "image_cache")
 MAX_CACHE_SIZE_MB = 500
 EVICTION_TARGET_RATIO = 0.8  # evict down to 80% of max
 

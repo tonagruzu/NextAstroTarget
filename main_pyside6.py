@@ -26,6 +26,7 @@ try:
     from src.utils.logger import setup_logging
     from src.database.database_manager import DatabaseManager
     from src.gui.pyside6_main_window import ModernMainWindow
+    from src.paths import app_home, bundle_root, ensure_writable, seed_runtime_files
 except ImportError as e:
     print(f"Error importing modules: {e}")
     sys.exit(1)
@@ -77,11 +78,11 @@ class NextAstroTargetApp:
                 except Exception as e:
                     self.logger.warning(f"Could not set Windows AppUserModelID: {e}")
             
-            # Set window icon if available
-            icon_path = "assets/icon.ico"
-            if os.path.exists(icon_path):
+            # Set window icon if available (read from the bundle, not the home directory)
+            icon_path = bundle_root() / "assets" / "icon.ico"
+            if icon_path.exists():
                 try:
-                    self.app.setWindowIcon(QIcon(icon_path))
+                    self.app.setWindowIcon(QIcon(str(icon_path)))
                 except Exception as e:
                     self.logger.warning(f"Could not load icon: {e}")
             
@@ -199,10 +200,17 @@ class NextAstroTargetApp:
 def main():
     """Main function - application entry point."""
     try:
-        # Change to application directory
-        app_dir = Path(__file__).parent
-        os.chdir(app_dir)
-        
+        # Resolve the application home and make it the working directory before
+        # anything else runs, so every relative path (data, logs, config) lands
+        # next to the executable in a packaged build.
+        os.chdir(app_home())
+
+        # Fail fast if runtime data cannot be written, instead of losing it.
+        ensure_writable()
+
+        # Fill in bundled files (config, catalogue) on first run.
+        seed_runtime_files()
+
         # Check for test startup parameter
         if len(sys.argv) > 1 and sys.argv[1] == '--test-startup':
             # Test mode - just check if we can initialize without GUI

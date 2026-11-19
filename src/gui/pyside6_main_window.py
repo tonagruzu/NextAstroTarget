@@ -21,6 +21,7 @@ import configparser
 import os
 
 from src.database.database_manager import DatabaseManager
+from src.paths import bundle_root
 from src.gui.pyside6_target_selection import PySide6TargetSelectionGUI
 from src.gui.pyside6_weather_widget import PySide6WeatherWidget
 from src.utils.astronomical_calculations import AstronomicalCalculator
@@ -257,9 +258,9 @@ class ModernMainWindow(QMainWindow):
         self.setWindowTitle(f"NextAstroTarget v{__version__} - Astronomy Target Planning")
         
         # Set application icon for window and taskbar
-        icon_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'assets', 'icon.ico')
-        if os.path.exists(icon_path):
-            self.setWindowIcon(QIcon(icon_path))
+        icon_path = bundle_root() / "assets" / "icon.ico"
+        if icon_path.exists():
+            self.setWindowIcon(QIcon(str(icon_path)))
         
         self.setMinimumSize(1400, 900)
         
@@ -339,7 +340,7 @@ class ModernMainWindow(QMainWindow):
         
         # App icon
         icon_label = QLabel()
-        icon_path = Path(__file__).parent.parent.parent / "assets" / "icon_64.png"
+        icon_path = bundle_root() / "assets" / "icon_64.png"
         if icon_path.exists():
             icon_pixmap = QPixmap(str(icon_path))
             # Use 48x48 for a balanced, compact header
