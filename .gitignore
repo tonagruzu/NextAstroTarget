@@ -123,7 +123,7 @@ dist/
 # Added by Spec Kitty CLI (auto-managed)
 .claude/
 .codex/
-.opencode/
+# .opencode/ is intentionally NOT ignored: it holds the OpenSpec commands and skills
 .windsurf/
 .gemini/
 .cursor/

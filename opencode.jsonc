@@ -1,0 +1,79 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+
+  // Default model: balanced profile (fastest fp8 provider, 100% uptime)
+  "model": "huggingface/flash-balanced",
+
+  "providers": {
+    "huggingface": {
+      "models": {
+        // ── 1. CHEAP ─────────────────────────────────────────────
+        // $0.098 / $0.294 · fp8 · 117 tok/s · TTFT 776ms · uptime 98.5%
+        "flash-cheap": {
+          "name": "V4.1 Flash · deepinfra (cheap)",
+          "modelID": "deepseek-ai/DeepSeek-V4.1-Flash-1017:deepinfra",
+          "limit": { "context": 1048576, "output": 384000 },
+          "cost": { "input": 0.098, "output": 0.294 }
+        },
+
+        // ── 2. BALANCED ──────────────────────────────────────────
+        // $0.30 / $1.20 · fp8 · 228 tok/s (fastest) · TTFT 391ms · 100%
+        "flash-balanced": {
+          "name": "V4.1 Flash · coreweave (fast)",
+          "modelID": "deepseek-ai/DeepSeek-V4.1-Flash-1017:coreweave",
+          "limit": { "context": 1048576, "output": 384000 },
+          "cost": { "input": 0.3, "output": 1.2 }
+        },
+
+        // ── 3. HARD TASKS ────────────────────────────────────────
+        // $1.30 / $2.60 · fp8 · 52 tok/s · uptime 99.9%
+        "pro-hard": {
+          "name": "V4 Pro 0813 · deepinfra (hard)",
+          "modelID": "deepseek-ai/DeepSeek-V4-Pro-0813:deepinfra",
+          "limit": { "context": 1048576, "output": 384000 },
+          "cost": { "input": 1.3, "output": 2.6 }
+        }
+      }
+    }
+  },
+
+  // Agent that keeps V4 Pro selected (switch to it like any other agent)
+  "agents": {
+    "hard": {
+      "description": "Hard tasks: astronomy math, database schema, multi-file refactors",
+      "mode": "primary",
+      "model": "huggingface/pro-hard"
+    }
+  },
+
+  // One-off escalation: /hard <task> — runs Pro in the background, keeps main context clean
+  "commands": {
+    "hard": {
+      "description": "Run a task on V4 Pro in a separate subagent",
+      "template": "$ARGUMENTS",
+      "agent": "general",
+      "model": "huggingface/pro-hard",
+      "subagent": true
+    }
+  },
+
+  // Web search provider — random picks an available one automatically
+  "websearch": {
+    "provider": "random"
+  },
+
+  // Load project-level instructions
+  "instructions": [".github/instructions/*.md"],
+
+  // Ignore generated databases and logs from file watching
+  "watcher": {
+    "ignore": [
+      "data/**",
+      "logs/**",
+      "dist/**",
+      "build/**",
+      "*.db",
+      "*.sqlite"
+    ]
+  }
+}
