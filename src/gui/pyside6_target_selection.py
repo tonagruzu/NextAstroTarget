@@ -188,6 +188,7 @@ class PySide6TargetSelectionGUI(QWidget):
         """Load objects from database with default size filter for performance."""
         try:
             self.logger.info("Loading objects from database")
+            self.db_manager.ensure_object_media_table()
             
             query = """
                 SELECT 
@@ -210,8 +211,12 @@ class PySide6TargetSelectionGUI(QWidget):
                     [Unnamed: 34] as ngc_designation,
                     [Unnamed: 35] as ic_designation,
                     [Unnamed: 37] as messier_designation,
-                    [Unnamed: 48] as astrobin_id
+                    [Unnamed: 48] as astrobin_id,
+                    object_media.image_path as image_path,
+                    object_media.astrobin_url as astrobin_url
                 FROM Main 
+                LEFT JOIN object_media
+                    ON object_media.object_name = [Imm Deep Sky Compendium -  2023 - 4th Edition]
                 WHERE [Imm Deep Sky Compendium -  2023 - 4th Edition] IS NOT NULL
                 ORDER BY [Imm Deep Sky Compendium -  2023 - 4th Edition]
             """
@@ -806,6 +811,34 @@ class PySide6TargetSelectionGUI(QWidget):
         
         self.image_cache[cache_key] = None
         return None, None
+
+    def load_object_image(self, obj_data: Dict) -> tuple:
+        """Return (QPixmap, source_label) preferring the author preview, then the survey."""
+        image_path = obj_data.get('image_path') or ''
+        if image_path:
+            from src.paths import data_dir
+            f = data_dir() / image_path
+            if f.exists():
+                pixmap = QPixmap(str(f))
+                if not pixmap.isNull():
+                    return pixmap, "Astrobin preview"
+                self.logger.debug("Preview unreadable for %s: %s", obj_data.get('object_name'), f)
+
+        ra_deg = obj_data.get('ra_degrees')
+        dec_deg = obj_data.get('dec_degrees')
+        if ra_deg is not None and dec_deg is not None:
+            try:
+                ra_float = float(ra_deg)
+                dec_float = float(dec_deg)
+                diam = obj_data.get('size_arcmin')
+                try:
+                    diam = float(diam) if diam is not None else None
+                except (ValueError, TypeError):
+                    diam = None
+                return self.load_dss_image(ra_float, dec_float, obj_data.get('object_name', ''), diameter_arcmin=diam)
+            except (ValueError, TypeError):
+                pass
+        return None, None
     
     # Legacy image methods (_try_load_sdss, _try_load_dss, _create_pseudocolor)
     # removed — all image fetching now goes through ImageService.
@@ -905,7 +938,33 @@ class PySide6TargetSelectionGUI(QWidget):
             
             like_btn.clicked.connect(toggle_like)
             layout.addWidget(like_btn, alignment=Qt.AlignCenter)
-            
+
+            # Open on Astrobin (opens the author's page in the default browser)
+            astrobin_url = (obj_data.get('astrobin_url') or '').strip()
+            if astrobin_url:
+                from PySide6.QtGui import QDesktopServices
+                from PySide6.QtCore import QUrl
+
+                astrobin_btn = QPushButton("🌐 Open on Astrobin")
+                astrobin_btn.setFixedHeight(40)
+                astrobin_btn.setFixedWidth(200)
+                astrobin_btn.setStyleSheet("""
+                    QPushButton {
+                        background-color: #2a5a2a;
+                        color: white;
+                        font-weight: bold;
+                        border-radius: 4px;
+                        font-size: 11pt;
+                    }
+                    QPushButton:hover { background-color: #367036; }
+                """)
+
+                def open_astrobin(_checked=False, url=astrobin_url):
+                    QDesktopServices.openUrl(QUrl(url))
+
+                astrobin_btn.clicked.connect(open_astrobin)
+                layout.addWidget(astrobin_btn, alignment=Qt.AlignCenter)
+
             # Separator line
             separator = QFrame()
             separator.setFrameShape(QFrame.HLine)
@@ -936,59 +995,33 @@ class PySide6TargetSelectionGUI(QWidget):
             nick_layout.addWidget(nick_edit, 1)
             layout.addLayout(nick_layout)
             
-            # DSS Image section
+            # Coordinates (used below for the details, and by Stellarium)
             ra_deg = obj_data.get('ra_degrees')
             dec_deg = obj_data.get('dec_degrees')
-            
-            if ra_deg is not None and dec_deg is not None:
-                try:
-                    ra_float = float(ra_deg)
-                    dec_float = float(dec_deg)
-                    
-                    self.logger.info(f"Loading sky survey image for coordinates: RA={ra_float}, Dec={dec_float}")
-                    
-                    # Load sky survey image via ImageService
-                    diam = obj_data.get('size_arcmin')
-                    try:
-                        diam = float(diam) if diam is not None else None
-                    except (ValueError, TypeError):
-                        diam = None
-                    pixmap, source = self.load_dss_image(ra_float, dec_float, obj_data.get('object_name', ''), diameter_arcmin=diam)
-                    
-                    if pixmap and not pixmap.isNull():
-                        self.logger.info(f"Sky survey image loaded successfully from {source}, size: {pixmap.width()}x{pixmap.height()}")
-                        
-                        image_label = QLabel()
-                        # Scale image to fit dialog while maintaining aspect ratio
-                        scaled_pixmap = pixmap.scaled(600, 600, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-                        image_label.setPixmap(scaled_pixmap)
-                        image_label.setAlignment(Qt.AlignCenter)
-                        image_label.setStyleSheet("border: 2px solid #4A9EFF; background-color: #000; padding: 5px;")
-                        layout.addWidget(image_label)
-                        
-                        # Show source attribution
-                        caption = QLabel(f"Image: {source}")
-                        caption.setAlignment(Qt.AlignCenter)
-                        caption.setStyleSheet("color: #888; font-size: 10px;")
-                        layout.addWidget(caption)
-                    else:
-                        self.logger.warning(f"Sky survey image not available for {obj_data.get('object_name')}")
-                        no_image_label = QLabel("📷 No survey image available")
-                        no_image_label.setAlignment(Qt.AlignCenter)
-                        no_image_label.setStyleSheet("font-size: 11pt; padding: 20px; color: #808080;")
-                        layout.addWidget(no_image_label)
-                        
-                except (ValueError, TypeError) as e:
-                    self.logger.error(f"Error with coordinates: {e}")
-                    error_label = QLabel("⚠️ Invalid coordinates")
-                    error_label.setAlignment(Qt.AlignCenter)
-                    error_label.setStyleSheet("font-size: 11pt; padding: 20px; color: #ff6b6b;")
-                    layout.addWidget(error_label)
+
+            # Image section (author preview, then sky survey fallback)
+            pixmap, source = self.load_object_image(obj_data)
+
+            if pixmap and not pixmap.isNull():
+                self.logger.info(f"Image loaded from {source}, size: {pixmap.width()}x{pixmap.height()}")
+
+                image_label = QLabel()
+                scaled_pixmap = pixmap.scaled(600, 600, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                image_label.setPixmap(scaled_pixmap)
+                image_label.setAlignment(Qt.AlignCenter)
+                image_label.setStyleSheet("border: 2px solid #4A9EFF; background-color: #000; padding: 5px;")
+                layout.addWidget(image_label)
+
+                caption = QLabel(f"Image: {source}")
+                caption.setAlignment(Qt.AlignCenter)
+                caption.setStyleSheet("color: #888; font-size: 10px;")
+                layout.addWidget(caption)
             else:
-                no_coord_label = QLabel("📍 No coordinates available")
-                no_coord_label.setAlignment(Qt.AlignCenter)
-                no_coord_label.setStyleSheet("font-size: 11pt; padding: 20px; color: #808080;")
-                layout.addWidget(no_coord_label)
+                self.logger.info(f"No image available for {obj_data.get('object_name')}")
+                no_image_label = QLabel("📷 No image available")
+                no_image_label.setAlignment(Qt.AlignCenter)
+                no_image_label.setStyleSheet("font-size: 11pt; padding: 20px; color: #808080;")
+                layout.addWidget(no_image_label)
             
             # Notes section (if available)
             notes = obj_data.get('notes', '')

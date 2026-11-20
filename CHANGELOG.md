@@ -14,6 +14,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Equipment compatibility checking
 - Web-based interface
 
+## [2.0.3] - 2026-11-20
+
+### Added
+- Object preview images, extracted from the spreadsheet's embedded photographs, shown in the
+  object detail view with the sky-survey image (`hips2fits`) as fallback.
+- "Open on Astrobin" action, which opens the author's full image page in the default browser.
+- `object_media` table storing each object's preview path and Astrobin URL.
+
+### Changed
+- Version bumped to 2.0.3.
+
+### Fixed
+- Object detail dialog no longer raises `NameError` (`ra_deg`/`dec_deg` undefined) after the
+  image-section refactor.
+
 ## [2.0.2] - 2026-11-19
 
 ### Added

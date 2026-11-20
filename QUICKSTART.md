@@ -181,5 +181,5 @@ For issues or questions:
 
 ---
 
-**Version**: 2.0.2 (PySide6)  
+**Version**: 2.0.3 (PySide6)  
 **Last Updated**: November 2026

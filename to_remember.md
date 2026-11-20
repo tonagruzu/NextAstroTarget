@@ -587,5 +587,12 @@ git status --short --untracked-files=all
   w stanie `approved`. Zostawione jako zapis historyczny, nie jako bieżące źródło prawdy.
   Marker: `kitty-specs/README.md`.
 - `openspec/` gotowe, zero change'ów. Skille w `.agents/skills/`.
+
+### Zasada wersjonowania
+
+Przy **każdej większej zmianie** podbij numer wersji (patch: `2.0.3` → `2.0.4`) w **jednym
+miejscu** — `src/__init__.py` (`__version__`) — i zsynchronizuj `CHANGELOG.md` oraz
+`QUICKSTART.md`. Numer widzisz w pasku tytułowym okna: „NextAstroTarget vX.Y.Z". Po zmianie
+poinformuj użytkownika, jakiego numeru ma się spodziewać.
 - Commity graniczne: `1462398` (wprowadzenie OpenSpec + profile modeli), `e39270e` (migracja do 2.1.0).
 - Niezacommitowane: `.github/instructions/UserInterface.md` i `instructions.md` — edycje użytkownika.

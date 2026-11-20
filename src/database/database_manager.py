@@ -108,6 +108,10 @@ class DatabaseManager:
                     progress_callback("Database initialization completed!", 100)
             
             self.logger.info("Database initialization completed successfully")
+            
+            # Extract object images and Astrobin links (best-effort, non-fatal)
+            self.populate_object_media()
+            
             return True
             
         except Exception as e:
@@ -455,6 +459,50 @@ class DatabaseManager:
         except Exception as e:
             self.logger.error(f"Error deleting setting {key}: {e}")
             return False
+
+    def _create_object_media_table(self, conn: sqlite3.Connection) -> None:
+        """Create the object_media table if missing."""
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS object_media (
+                object_name TEXT PRIMARY KEY,
+                image_path TEXT NOT NULL DEFAULT '',
+                astrobin_url TEXT NOT NULL DEFAULT ''
+            )
+        """)
+
+    def ensure_object_media_table(self) -> None:
+        """Ensure the object_media table exists even before any import."""
+        with sqlite3.connect(self.db_path) as conn:
+            self._create_object_media_table(conn)
+            conn.commit()
+
+    def populate_object_media(self) -> int:
+        """Extract object images and Astrobin links and store them.
+
+        Returns the number of object records stored, or -1 on failure.
+        """
+        try:
+            from src.utils.object_media_extractor import ObjectMediaExtractor
+
+            images_dir = Path(self.data_dir) / "object_images"
+            extractor = ObjectMediaExtractor(self.excel_file, images_dir)
+            records = extractor.extract()
+
+            with sqlite3.connect(self.db_path) as conn:
+                self._create_object_media_table(conn)
+                conn.execute("DELETE FROM object_media")
+                conn.executemany(
+                    "INSERT OR REPLACE INTO object_media (object_name, image_path, astrobin_url) "
+                    "VALUES (?, ?, ?)",
+                    [(r["object_name"], r["image_path"], r["astrobin_url"]) for r in records],
+                )
+                conn.commit()
+
+            self.logger.info("Populated object_media with %d objects", len(records))
+            return len(records)
+        except Exception as e:
+            self.logger.error("Failed to populate object_media: %s", e)
+            return -1
 
 
 if __name__ == "__main__":

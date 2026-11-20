@@ -84,6 +84,9 @@ data/image_cache/*.jpg
 data/image_cache/.cache_index.json
 data/image_cache/.cache_index.tmp
 
+# Object preview images (extracted from the spreadsheet at import)
+data/object_images/
+
 # Log files (generated at runtime)
 logs/*.log
 logs/*.log.*
